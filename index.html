@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>1인사업자 가계예산 월별 추이</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">1인 사업 + 근로소득</p>
+        <h1>월별 예산 추이</h1>
+      </div>
+      <div class="header-actions">
+        <button id="exportJsonBtn" type="button" title="데이터 내보내기">내보내기</button>
+        <label class="file-button" title="데이터 가져오기">
+          가져오기
+          <input id="importJsonInput" type="file" accept="application/json" />
+        </label>
+      </div>
+    </header>
+
+    <main>
+      <section class="summary-grid" aria-label="요약">
+        <article>
+          <span>최근 가계예산</span>
+          <strong id="latestHousehold">0원</strong>
+        </article>
+        <article>
+          <span>최근 조정 여유분</span>
+          <strong id="latestBuffer">0원</strong>
+        </article>
+        <article>
+          <span>누적 대출상환</span>
+          <strong id="totalDebt">0원</strong>
+        </article>
+        <article>
+          <span>누적 저축/비상금</span>
+          <strong id="totalSaving">0원</strong>
+        </article>
+      </section>
+
+      <section class="workspace">
+        <form id="monthForm" class="entry-panel">
+          <div class="panel-title">
+            <h2>월별 입력</h2>
+            <button id="resetFormBtn" type="button" title="새 입력">새로 입력</button>
+          </div>
+
+          <input type="hidden" id="editingId" />
+
+          <div class="form-grid">
+            <label>
+              월
+              <input id="month" type="month" required />
+            </label>
+            <label>
+              근로소득
+              <input id="salaryIncome" type="number" inputmode="numeric" min="0" step="10000" value="2500000" />
+            </label>
+            <label>
+              사업수입
+              <input id="businessIncome" type="number" inputmode="numeric" min="0" step="10000" value="1000000" />
+            </label>
+            <label>
+              가계예산
+              <input id="householdBudget" type="number" inputmode="numeric" min="0" step="10000" value="3000000" />
+            </label>
+          </div>
+
+          <div class="split-title">사업계좌</div>
+          <div class="form-grid">
+            <label>
+              종소세+부가세 보관
+              <input id="taxReserve" type="number" inputmode="numeric" min="0" step="10000" />
+            </label>
+            <label>
+              경비
+              <input id="businessExpense" type="number" inputmode="numeric" min="0" step="10000" />
+            </label>
+            <label>
+              월급 이체
+              <input id="ownerPay" type="number" inputmode="numeric" min="0" step="10000" />
+            </label>
+          </div>
+
+          <div class="split-title">가계계좌</div>
+          <div class="form-grid">
+            <label>
+              고정지출
+              <input id="fixedCost" type="number" inputmode="numeric" min="0" step="10000" value="800000" />
+            </label>
+            <label>
+              생활비
+              <input id="livingCost" type="number" inputmode="numeric" min="0" step="10000" value="750000" />
+            </label>
+            <label>
+              교육비+용돈
+              <input id="educationCost" type="number" inputmode="numeric" min="0" step="10000" value="650000" />
+            </label>
+            <label>
+              보험/의료
+              <input id="medicalCost" type="number" inputmode="numeric" min="0" step="10000" value="200000" />
+            </label>
+            <label>
+              대출상환
+              <input id="debtPayment" type="number" inputmode="numeric" min="0" step="10000" value="400000" />
+            </label>
+            <label>
+              저축/비상금
+              <input id="saving" type="number" inputmode="numeric" min="0" step="10000" value="200000" />
+            </label>
+          </div>
+
+          <label>
+            메모
+            <textarea id="memo" rows="3" placeholder="이번 달 특이사항"></textarea>
+          </label>
+
+          <div class="computed-strip">
+            <div>
+              <span>사업 배분 합계</span>
+              <strong id="businessAllocated">0원</strong>
+            </div>
+            <div>
+              <span>가계 지출 합계</span>
+              <strong id="householdAllocated">0원</strong>
+            </div>
+            <div>
+              <span>조정 여유분</span>
+              <strong id="householdBuffer">0원</strong>
+            </div>
+          </div>
+
+          <button class="primary" type="submit">월 데이터 저장</button>
+        </form>
+
+        <section class="chart-panel">
+          <div class="panel-title">
+            <h2>추이 보기</h2>
+            <select id="chartMetric" aria-label="차트 항목">
+              <option value="householdBudget">가계예산</option>
+              <option value="householdSpend">가계 지출</option>
+              <option value="buffer">조정 여유분</option>
+              <option value="debtPayment">대출상환</option>
+              <option value="saving">저축/비상금</option>
+              <option value="businessIncome">사업수입</option>
+              <option value="taxReserve">세금보관</option>
+            </select>
+          </div>
+          <div class="chart-wrap">
+            <svg id="trendChart" viewBox="0 0 720 300" role="img" aria-label="월별 추이 차트"></svg>
+          </div>
+          <div id="chartLegend" class="chart-legend"></div>
+        </section>
+      </section>
+
+      <section class="table-panel">
+        <div class="panel-title">
+          <h2>월별 기록</h2>
+          <button id="downloadCsvBtn" type="button" title="CSV 다운로드">CSV</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>월</th>
+                <th>사업수입</th>
+                <th>세금보관</th>
+                <th>경비</th>
+                <th>월급이체</th>
+                <th>가계예산</th>
+                <th>가계지출</th>
+                <th>조정</th>
+                <th>대출</th>
+                <th>저축</th>
+                <th>관리</th>
+              </tr>
+            </thead>
+            <tbody id="recordsBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
