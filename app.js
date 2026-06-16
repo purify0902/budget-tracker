@@ -62,11 +62,17 @@ function currentMonthString() {
 }
 
 function toNumber(value) {
-  return Number(value) || 0;
+  return Number(String(value ?? "").replaceAll(",", "")) || 0;
 }
 
 function formatMoney(value) {
   return `${Math.round(toNumber(value)).toLocaleString("ko-KR")}원`;
+}
+
+function formatInputMoney(value) {
+  const digits = String(value ?? "").replace(/[^\d]/g, "");
+  if (!digits) return "";
+  return Number(digits).toLocaleString("ko-KR");
 }
 
 function shortMoney(value) {
@@ -168,7 +174,8 @@ function clearDraft() {
 
 function fillBudgetForm(record) {
   budgetFields.forEach((field) => {
-    if ($(field)) $(field).value = record[field] ?? "";
+    if (!$(field)) return;
+    $(field).value = moneyFields.includes(field) ? formatInputMoney(record[field]) : (record[field] ?? "");
   });
   $("editingId").value = record.id || "";
   updateComputedStrip();
@@ -230,7 +237,7 @@ function editExpense(id) {
   if (!expense) return;
   $("expenseEditingId").value = id;
   expenseFields.forEach((field) => {
-    $(field).value = expense[field] ?? "";
+    $(field).value = field === "expenseAmount" ? formatInputMoney(expense[field]) : (expense[field] ?? "");
   });
   $("expenseForm").scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -557,6 +564,15 @@ function importJson(file) {
 }
 
 function bindEvents() {
+  document.querySelectorAll(".money-input").forEach((input) => {
+    input.addEventListener("input", () => {
+      input.value = formatInputMoney(input.value);
+    });
+    input.addEventListener("blur", () => {
+      input.value = formatInputMoney(input.value);
+    });
+  });
+
   document.querySelectorAll(".tab-button").forEach((button) => {
     button.addEventListener("click", () => {
       const tab = button.dataset.tab;
