@@ -5,7 +5,6 @@ const EXPENSES_KEY = "solo-business-expenses-v1";
 
 const budgetFields = [
   "month",
-  "salaryIncome",
   "businessIncome",
   "householdBudget",
   "taxReserve",
@@ -488,7 +487,6 @@ function makeCsv(headers, rows) {
 function exportBudgetCsv() {
   const headers = [
     "월",
-    "근로소득",
     "사업수입",
     "세금보관",
     "경비",
@@ -503,7 +501,6 @@ function exportBudgetCsv() {
   ];
   const rows = records.map((record) => [
     record.month,
-    record.salaryIncome,
     record.businessIncome,
     record.taxReserve,
     record.businessExpense,
