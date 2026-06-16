@@ -97,7 +97,7 @@ function loadAllData() {
   }
 
   const legacyRecords = readJson(LEGACY_STORAGE_KEY, null);
-  records = Array.isArray(legacyRecords) ? legacyRecords : seedRecords();
+  records = Array.isArray(legacyRecords) ? legacyRecords : [];
   expenses = readJson(EXPENSES_KEY, []);
 }
 
@@ -106,28 +106,6 @@ function saveAllData() {
   expenses.sort((a, b) => b.expenseDate.localeCompare(a.expenseDate));
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ records, expenses }));
   localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
-}
-
-function seedRecords() {
-  return [
-    {
-      id: uid(),
-      month: "2026-06",
-      salaryIncome: 2500000,
-      businessIncome: 1000000,
-      householdBudget: 3000000,
-      taxReserve: 250000,
-      businessExpense: 250000,
-      ownerPay: 500000,
-      fixedCost: 800000,
-      livingCost: 750000,
-      educationCost: 650000,
-      medicalCost: 200000,
-      debtPayment: 400000,
-      saving: 200000,
-      memo: "시작 예산",
-    },
-  ];
 }
 
 function householdSpend(record) {
@@ -201,18 +179,6 @@ function resetForm({ keepDraft = false } = {}) {
   $("editingId").value = "";
   $("monthForm").reset();
   $("month").value = currentMonthString();
-  $("salaryIncome").value = 2500000;
-  $("businessIncome").value = 1000000;
-  $("householdBudget").value = 3000000;
-  $("taxReserve").value = 250000;
-  $("businessExpense").value = 250000;
-  $("ownerPay").value = 500000;
-  $("fixedCost").value = 800000;
-  $("livingCost").value = 750000;
-  $("educationCost").value = 650000;
-  $("medicalCost").value = 200000;
-  $("debtPayment").value = 400000;
-  $("saving").value = 200000;
   if (!keepDraft) localStorage.removeItem(DRAFT_KEY);
   $("draftStatus").textContent = "입력 내용은 자동 임시저장됩니다.";
   updateComputedStrip();
@@ -235,13 +201,6 @@ function resetExpenseForm() {
   $("expenseArea").value = "가계";
   $("expenseCategory").value = "생활비";
   $("expenseMethod").value = "체크카드";
-}
-
-function setDefaultsFromBusinessIncome() {
-  const businessIncome = toNumber($("businessIncome").value);
-  if (!$("taxReserve").value) $("taxReserve").value = Math.round(businessIncome * 0.25);
-  if (!$("businessExpense").value) $("businessExpense").value = Math.round(businessIncome * 0.25);
-  if (!$("ownerPay").value) $("ownerPay").value = Math.round(businessIncome * 0.5);
 }
 
 function updateComputedStrip() {
@@ -601,22 +560,23 @@ function importJson(file) {
 }
 
 function bindEvents() {
-  $("monthForm").addEventListener("input", () => {
-    updateComputedStrip();
-    saveDraft();
+  document.querySelectorAll(".tab-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const tab = button.dataset.tab;
+      document.querySelectorAll(".tab-button").forEach((item) => item.classList.toggle("active", item === button));
+      document.querySelectorAll(".tab-panel").forEach((panel) => {
+        panel.classList.toggle("active", panel.dataset.tabPanel === tab);
+      });
+    });
   });
 
-  $("businessIncome").addEventListener("change", () => {
-    $("taxReserve").value = Math.round(toNumber($("businessIncome").value) * 0.25);
-    $("businessExpense").value = Math.round(toNumber($("businessIncome").value) * 0.25);
-    $("ownerPay").value = Math.round(toNumber($("businessIncome").value) * 0.5);
+  $("monthForm").addEventListener("input", () => {
     updateComputedStrip();
     saveDraft();
   });
 
   $("monthForm").addEventListener("submit", (event) => {
     event.preventDefault();
-    setDefaultsFromBusinessIncome();
     const next = currentBudgetFormRecord();
     const existingIndex = records.findIndex((record) => record.id === next.id || record.month === next.month);
     if (existingIndex >= 0) {

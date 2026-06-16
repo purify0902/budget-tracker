@@ -3,21 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>1인사업자 가계예산 월별 추이</title>
+    <title>월별 예산·가계부</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <header class="app-header">
-      <div>
-        <h1>월별 예산·가계부</h1>
-      </div>
-      <div class="header-actions">
-        <button id="exportJsonBtn" type="button" title="전체 데이터 내보내기">내보내기</button>
-        <label class="file-button" title="전체 데이터 가져오기">
-          가져오기
-          <input id="importJsonInput" type="file" accept="application/json" />
-        </label>
-      </div>
+      <h1>월별 예산·가계부</h1>
     </header>
 
     <main>
@@ -40,7 +31,14 @@
         </article>
       </section>
 
-      <section class="workspace">
+      <nav class="tab-nav" aria-label="주요 메뉴">
+        <button class="tab-button active" type="button" data-tab="budget">월별 예산</button>
+        <button class="tab-button" type="button" data-tab="ledger">가계부</button>
+        <button class="tab-button" type="button" data-tab="analysis">분석</button>
+        <button class="tab-button" type="button" data-tab="backup">백업</button>
+      </nav>
+
+      <section class="tab-panel active" data-tab-panel="budget">
         <form id="monthForm" class="entry-panel">
           <div class="panel-title">
             <div>
@@ -59,15 +57,15 @@
             </label>
             <label>
               근로소득
-              <input id="salaryIncome" type="number" inputmode="numeric" min="0" step="10000" value="2500000" />
+              <input id="salaryIncome" type="number" inputmode="numeric" min="0" step="10000" />
             </label>
             <label>
               사업수입
-              <input id="businessIncome" type="number" inputmode="numeric" min="0" step="10000" value="1000000" />
+              <input id="businessIncome" type="number" inputmode="numeric" min="0" step="10000" />
             </label>
             <label>
               가계예산
-              <input id="householdBudget" type="number" inputmode="numeric" min="0" step="10000" value="3000000" />
+              <input id="householdBudget" type="number" inputmode="numeric" min="0" step="10000" />
             </label>
           </div>
 
@@ -91,27 +89,27 @@
           <div class="form-grid">
             <label>
               고정지출
-              <input id="fixedCost" type="number" inputmode="numeric" min="0" step="10000" value="800000" />
+              <input id="fixedCost" type="number" inputmode="numeric" min="0" step="10000" />
             </label>
             <label>
               생활비
-              <input id="livingCost" type="number" inputmode="numeric" min="0" step="10000" value="750000" />
+              <input id="livingCost" type="number" inputmode="numeric" min="0" step="10000" />
             </label>
             <label>
               교육비+용돈
-              <input id="educationCost" type="number" inputmode="numeric" min="0" step="10000" value="650000" />
+              <input id="educationCost" type="number" inputmode="numeric" min="0" step="10000" />
             </label>
             <label>
               보험/의료
-              <input id="medicalCost" type="number" inputmode="numeric" min="0" step="10000" value="200000" />
+              <input id="medicalCost" type="number" inputmode="numeric" min="0" step="10000" />
             </label>
             <label>
               대출상환
-              <input id="debtPayment" type="number" inputmode="numeric" min="0" step="10000" value="400000" />
+              <input id="debtPayment" type="number" inputmode="numeric" min="0" step="10000" />
             </label>
             <label>
               저축/비상금
-              <input id="saving" type="number" inputmode="numeric" min="0" step="10000" value="200000" />
+              <input id="saving" type="number" inputmode="numeric" min="0" step="10000" />
             </label>
           </div>
 
@@ -138,56 +136,36 @@
           <button class="primary" type="submit">월 데이터 저장</button>
         </form>
 
-        <section class="chart-panel">
+        <section class="table-panel">
           <div class="panel-title">
-            <h2>추이 보기</h2>
-            <select id="chartMetric" aria-label="차트 항목">
-              <option value="householdBudget">가계예산</option>
-              <option value="householdSpend">가계 예산 배분</option>
-              <option value="actualExpense">실제 지출</option>
-              <option value="buffer">조정 여유분</option>
-              <option value="debtPayment">대출상환</option>
-              <option value="saving">저축/비상금</option>
-              <option value="businessIncome">사업수입</option>
-              <option value="taxReserve">세금보관</option>
-            </select>
+            <h2>월별 예산 기록</h2>
+            <button id="downloadCsvBtn" type="button" title="월별 예산 CSV 다운로드">예산 CSV</button>
           </div>
-          <div class="chart-wrap">
-            <svg id="trendChart" viewBox="0 0 720 300" role="img" aria-label="월별 추이 차트"></svg>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>월</th>
+                  <th>사업수입</th>
+                  <th>세금보관</th>
+                  <th>경비</th>
+                  <th>월급이체</th>
+                  <th>가계예산</th>
+                  <th>예산배분</th>
+                  <th>실제지출</th>
+                  <th>예산-실제</th>
+                  <th>대출</th>
+                  <th>저축</th>
+                  <th>관리</th>
+                </tr>
+              </thead>
+              <tbody id="recordsBody"></tbody>
+            </table>
           </div>
-          <div id="chartLegend" class="chart-legend"></div>
         </section>
       </section>
 
-      <section class="table-panel">
-        <div class="panel-title">
-          <h2>월별 예산 기록</h2>
-          <button id="downloadCsvBtn" type="button" title="월별 예산 CSV 다운로드">예산 CSV</button>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>월</th>
-                <th>사업수입</th>
-                <th>세금보관</th>
-                <th>경비</th>
-                <th>월급이체</th>
-                <th>가계예산</th>
-                <th>예산배분</th>
-                <th>실제지출</th>
-                <th>예산-실제</th>
-                <th>대출</th>
-                <th>저축</th>
-                <th>관리</th>
-              </tr>
-            </thead>
-            <tbody id="recordsBody"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="expense-layout">
+      <section class="tab-panel" data-tab-panel="ledger">
         <form id="expenseForm" class="entry-panel">
           <div class="panel-title">
             <h2>가계부 지출 입력</h2>
@@ -232,10 +210,10 @@
             <label>
               결제수단
               <select id="expenseMethod">
-                <option value="체크카드">체크카드</option>
-                <option value="신용카드">신용카드</option>
                 <option value="계좌이체">계좌이체</option>
                 <option value="현금">현금</option>
+                <option value="체크카드">체크카드</option>
+                <option value="신용카드">신용카드</option>
                 <option value="자동이체">자동이체</option>
               </select>
             </label>
@@ -249,37 +227,75 @@
           <button class="primary" type="submit">지출 저장</button>
         </form>
 
-        <section class="chart-panel">
+        <section class="table-panel">
           <div class="panel-title">
-            <h2>월별 실제 지출</h2>
-            <input id="expenseMonthFilter" type="month" aria-label="지출 확인 월" />
+            <h2>지출 내역</h2>
+            <button id="downloadExpenseCsvBtn" type="button" title="지출 CSV 다운로드">지출 CSV</button>
           </div>
-          <div id="categorySummary" class="category-summary"></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>날짜</th>
+                  <th>영역</th>
+                  <th>분류</th>
+                  <th>내용</th>
+                  <th>결제수단</th>
+                  <th>가격</th>
+                  <th>메모</th>
+                  <th>관리</th>
+                </tr>
+              </thead>
+              <tbody id="expensesBody"></tbody>
+            </table>
+          </div>
         </section>
       </section>
 
-      <section class="table-panel">
-        <div class="panel-title">
-          <h2>지출 내역</h2>
-          <button id="downloadExpenseCsvBtn" type="button" title="지출 CSV 다운로드">지출 CSV</button>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>날짜</th>
-                <th>영역</th>
-                <th>분류</th>
-                <th>내용</th>
-                <th>결제수단</th>
-                <th>가격</th>
-                <th>메모</th>
-                <th>관리</th>
-              </tr>
-            </thead>
-            <tbody id="expensesBody"></tbody>
-          </table>
-        </div>
+      <section class="tab-panel" data-tab-panel="analysis">
+        <section class="analysis-grid">
+          <section class="chart-panel">
+            <div class="panel-title">
+              <h2>추이 보기</h2>
+              <select id="chartMetric" aria-label="차트 항목">
+                <option value="householdBudget">가계예산</option>
+                <option value="householdSpend">가계 예산 배분</option>
+                <option value="actualExpense">실제 지출</option>
+                <option value="buffer">조정 여유분</option>
+                <option value="debtPayment">대출상환</option>
+                <option value="saving">저축/비상금</option>
+                <option value="businessIncome">사업수입</option>
+                <option value="taxReserve">세금보관</option>
+              </select>
+            </div>
+            <div class="chart-wrap">
+              <svg id="trendChart" viewBox="0 0 720 300" role="img" aria-label="월별 추이 차트"></svg>
+            </div>
+            <div id="chartLegend" class="chart-legend"></div>
+          </section>
+
+          <section class="chart-panel">
+            <div class="panel-title">
+              <h2>월별 실제 지출</h2>
+              <input id="expenseMonthFilter" type="month" aria-label="지출 확인 월" />
+            </div>
+            <div id="categorySummary" class="category-summary"></div>
+          </section>
+        </section>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="backup">
+        <section class="entry-panel backup-panel">
+          <h2>백업</h2>
+          <p>입력한 데이터는 현재 브라우저에 저장됩니다. 중요한 데이터는 주기적으로 내보내기 파일로 보관하세요.</p>
+          <div class="backup-actions">
+            <button id="exportJsonBtn" type="button" title="전체 데이터 내보내기">내보내기</button>
+            <label class="file-button" title="전체 데이터 가져오기">
+              가져오기
+              <input id="importJsonInput" type="file" accept="application/json" />
+            </label>
+          </div>
+        </section>
       </section>
     </main>
 
