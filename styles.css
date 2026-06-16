@@ -242,6 +242,37 @@ textarea:focus {
   outline: 3px solid rgba(37, 99, 235, 0.13);
 }
 
+.category-manager {
+  margin-top: 14px;
+}
+
+.category-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 80px;
+  gap: 10px;
+  align-items: end;
+  margin-top: 12px;
+}
+
+.category-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.category-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--readonly-border);
+  border-radius: 8px;
+  background: var(--readonly);
+  padding: 6px 8px;
+  color: var(--text);
+  font-size: 13px;
+}
+
 .split-title {
   margin-top: 18px;
   padding-top: 14px;

@@ -2,6 +2,18 @@ const STORAGE_KEY = "solo-business-budget-tracker-v2";
 const LEGACY_STORAGE_KEY = "solo-business-budget-tracker-v1";
 const DRAFT_KEY = "solo-business-budget-draft-v1";
 const EXPENSES_KEY = "solo-business-expenses-v1";
+const CATEGORIES_KEY = "solo-business-expense-categories-v1";
+
+const DEFAULT_CATEGORIES = [
+  "생활비",
+  "고정지출",
+  "교육비+용돈",
+  "보험/의료",
+  "대출상환",
+  "저축/비상금",
+  "사업경비",
+  "기타",
+];
 
 const budgetFields = [
   "month",
@@ -46,6 +58,7 @@ const $ = (id) => document.getElementById(id);
 
 let records = [];
 let expenses = [];
+let categories = [];
 
 function uid() {
   if (crypto.randomUUID) return crypto.randomUUID();
@@ -94,10 +107,14 @@ function readJson(key, fallback) {
 }
 
 function loadAllData() {
+  categories = readJson(CATEGORIES_KEY, DEFAULT_CATEGORIES);
+  if (!Array.isArray(categories) || categories.length === 0) categories = [...DEFAULT_CATEGORIES];
+
   const stored = readJson(STORAGE_KEY, null);
   if (stored && Array.isArray(stored.records)) {
     records = stored.records;
     expenses = Array.isArray(stored.expenses) ? stored.expenses : readJson(EXPENSES_KEY, []);
+    if (Array.isArray(stored.categories) && stored.categories.length > 0) categories = stored.categories;
     return;
   }
 
@@ -109,8 +126,9 @@ function loadAllData() {
 function saveAllData() {
   records.sort((a, b) => a.month.localeCompare(b.month));
   expenses.sort((a, b) => b.expenseDate.localeCompare(a.expenseDate));
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ records, expenses }));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ records, expenses, categories }));
   localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
+  localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
 }
 
 function householdSpend(record) {
@@ -205,8 +223,83 @@ function resetExpenseForm() {
   $("expenseForm").reset();
   $("expenseDate").value = todayString();
   $("expenseArea").value = "가계";
-  $("expenseCategory").value = "생활비";
+  renderCategoryOptions(categories[0] || "");
   $("expenseMethod").value = "체크카드";
+}
+
+function saveCategories() {
+  localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
+  saveAllData();
+}
+
+function renderCategoryOptions(selectedValue = $("expenseCategory")?.value) {
+  const select = $("expenseCategory");
+  if (!select) return;
+
+  const options = [...categories];
+  if (selectedValue && !options.includes(selectedValue)) options.push(selectedValue);
+
+  select.innerHTML = options
+    .map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`)
+    .join("");
+  select.value = selectedValue && options.includes(selectedValue) ? selectedValue : (options[0] || "");
+}
+
+function renderCategoryManager() {
+  const wrap = $("categoryList");
+  if (!wrap) return;
+
+  const usedCategories = new Set(expenses.map((expense) => expense.expenseCategory).filter(Boolean));
+
+  wrap.innerHTML = categories
+    .map((category) => {
+      const inUse = usedCategories.has(category);
+      return `
+        <div class="category-chip">
+          <span>${escapeHtml(category)}${inUse ? " · 사용 중" : ""}</span>
+          <button class="text-button" type="button" data-category-delete="${escapeHtml(category)}">삭제</button>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function addCategory() {
+  const input = $("newCategoryName");
+  const next = input.value.trim();
+  if (!next) return;
+  if (categories.includes(next)) {
+    input.value = "";
+    renderCategoryOptions(next);
+    return;
+  }
+
+  categories.push(next);
+  input.value = "";
+  saveCategories();
+  renderCategoryOptions(next);
+  renderCategoryManager();
+}
+
+function deleteCategory(category) {
+  if (!categories.includes(category)) return;
+  if (categories.length <= 1) {
+    alert("분류는 최소 1개가 필요합니다.");
+    return;
+  }
+
+  const isUsed = expenses.some((expense) => expense.expenseCategory === category);
+  const message = isUsed
+    ? `"${category}" 분류는 기존 지출에 사용 중입니다. 삭제해도 과거 기록과 분석에는 그대로 남고, 앞으로 입력 목록에서만 빠집니다.`
+    : `"${category}" 분류를 입력 목록에서 삭제할까요?`;
+  if (!window.confirm(message)) return;
+
+  const current = $("expenseCategory").value;
+  categories = categories.filter((item) => item !== category);
+  saveCategories();
+  renderCategoryOptions(current === category ? categories[0] : current);
+  renderCategoryManager();
+  renderCategorySummary();
 }
 
 function updateComputedStrip() {
@@ -236,6 +329,7 @@ function editExpense(id) {
   const expense = expenses.find((item) => item.id === id);
   if (!expense) return;
   $("expenseEditingId").value = id;
+  renderCategoryOptions(expense.expenseCategory);
   expenseFields.forEach((field) => {
     $(field).value = field === "expenseAmount" ? formatInputMoney(expense[field]) : (expense[field] ?? "");
   });
@@ -455,6 +549,7 @@ function render() {
   renderSummary();
   renderBudgetTable();
   renderExpensesTable();
+  renderCategoryManager();
   renderCategorySummary();
   renderChart();
 }
@@ -480,7 +575,7 @@ function download(filename, content, mimeType) {
 function exportJson() {
   download(
     "budget-tracker-data.json",
-    JSON.stringify({ records, expenses, exportedAt: new Date().toISOString() }, null, 2),
+    JSON.stringify({ records, expenses, categories, exportedAt: new Date().toISOString() }, null, 2),
     "application/json",
   );
 }
@@ -553,7 +648,11 @@ function importJson(file) {
         expenses = Array.isArray(imported.expenses)
           ? imported.expenses.map((expense) => ({ ...expense, id: expense.id || uid() }))
           : [];
+        if (Array.isArray(imported.categories) && imported.categories.length > 0) {
+          categories = imported.categories;
+        }
       }
+      renderCategoryOptions();
       render();
       alert("데이터를 가져왔습니다.");
     } catch {
@@ -629,6 +728,17 @@ function bindEvents() {
     const deleteId = event.target.dataset.expenseDelete;
     if (editId) editExpense(editId);
     if (deleteId) deleteExpense(deleteId);
+  });
+
+  $("addCategoryBtn").addEventListener("click", addCategory);
+  $("newCategoryName").addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    addCategory();
+  });
+  $("categoryList").addEventListener("click", (event) => {
+    const category = event.target.dataset.categoryDelete;
+    if (category) deleteCategory(category);
   });
 
   $("resetFormBtn").addEventListener("click", () => resetForm());

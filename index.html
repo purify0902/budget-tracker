@@ -185,16 +185,7 @@
             </label>
             <label>
               분류
-              <select id="expenseCategory">
-                <option value="생활비">생활비</option>
-                <option value="고정지출">고정지출</option>
-                <option value="교육비+용돈">교육비+용돈</option>
-                <option value="보험/의료">보험/의료</option>
-                <option value="대출상환">대출상환</option>
-                <option value="저축/비상금">저축/비상금</option>
-                <option value="사업경비">사업경비</option>
-                <option value="기타">기타</option>
-              </select>
+              <select id="expenseCategory"></select>
             </label>
             <label>
               가격
@@ -223,6 +214,20 @@
 
           <button class="primary" type="submit">지출 저장</button>
         </form>
+
+        <section class="entry-panel category-manager">
+          <div class="panel-title">
+            <h2>분류 관리</h2>
+          </div>
+          <div class="category-editor">
+            <label>
+              새 분류
+              <input id="newCategoryName" type="text" placeholder="예: 경조사, 병원비, 여행" />
+            </label>
+            <button id="addCategoryBtn" type="button">추가</button>
+          </div>
+          <div id="categoryList" class="category-list" aria-label="지출 분류 목록"></div>
+        </section>
 
         <section class="table-panel">
           <div class="panel-title">
