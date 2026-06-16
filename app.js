@@ -1,64 +1,63 @@
-const STORAGE_KEY = "solo-business-budget-tracker-v2";
-const LEGACY_STORAGE_KEY = "solo-business-budget-tracker-v1";
-const DRAFT_KEY = "solo-business-budget-draft-v1";
-const EXPENSES_KEY = "solo-business-expenses-v1";
-const CATEGORIES_KEY = "solo-business-expense-categories-v1";
+// ═══════════════════════════════════════════════════════════
+// STORAGE KEYS
+// ═══════════════════════════════════════════════════════════
+const STORAGE_KEY   = "solo-business-budget-tracker-v2";
+const LEGACY_KEY_V1 = "solo-business-budget-tracker-v1";
+const DRAFT_KEY     = "solo-business-budget-draft-v2";
+const EXPENSES_KEY  = "solo-business-expenses-v1";
+const EXP_CATS_KEY  = "solo-business-expense-categories-v1";
+const BIZ_CATS_KEY  = "budget-biz-cats-v1";
+const HH_CATS_KEY   = "budget-hh-cats-v1";
 
-const DEFAULT_CATEGORIES = [
-  "생활비",
-  "고정지출",
-  "교육비+용돈",
-  "보험/의료",
-  "대출상환",
-  "저축/비상금",
-  "사업경비",
-  "기타",
+// ═══════════════════════════════════════════════════════════
+// DEFAULT CATEGORIES
+// ═══════════════════════════════════════════════════════════
+const DEFAULT_BIZ_CATS = [
+  { id: "biz_vat",    name: "부가세 보관",     pct: 10 },
+  { id: "biz_exp",    name: "사업경비",         pct: 25 },
+  { id: "biz_tax",    name: "종소세 보관",      pct: 15 },
+  { id: "biz_rsv",    name: "사업비상금",       pct:  5 },
+  { id: "biz_salary", name: "내 월급 (→가계)", pct: 45 },
 ];
 
-const budgetFields = [
-  "month",
-  "businessIncome",
-  "householdBudget",
-  "taxReserve",
-  "businessExpense",
-  "ownerPay",
-  "fixedCost",
-  "livingCost",
-  "educationCost",
-  "medicalCost",
-  "debtPayment",
-  "saving",
-  "memo",
+const DEFAULT_HH_CATS = [
+  { id: "hh_fixed",   name: "고정지출",   pct: 30 },
+  { id: "hh_living",  name: "생활비",     pct: 23 },
+  { id: "hh_edu",     name: "자녀/교육",  pct: 12 },
+  { id: "hh_medical", name: "보험/의료",  pct:  7 },
+  { id: "hh_debt",    name: "대출상환",   pct: 15 },
+  { id: "hh_savings", name: "저축/투자",  pct:  8 },
+  { id: "hh_emerg",   name: "가계비상금", pct:  5 },
 ];
 
-const expenseFields = [
-  "expenseDate",
-  "expenseArea",
-  "expenseCategory",
-  "expenseDetail",
-  "expenseMethod",
-  "expenseAmount",
-  "expenseMemo",
+const DEFAULT_EXP_CATS = [
+  "생활비", "고정지출", "자녀/교육", "보험/의료",
+  "대출상환", "저축/비상금", "사업경비", "기타",
 ];
 
-const moneyFields = budgetFields.filter((field) => !["month", "memo"].includes(field));
-
-const metricLabels = {
+const METRIC_LABELS = {
   householdBudget: "가계예산",
-  householdSpend: "가계 예산 배분",
-  actualExpense: "실제 지출",
-  buffer: "조정 여유분",
-  debtPayment: "대출상환",
-  saving: "저축/비상금",
-  businessIncome: "사업수입",
-  taxReserve: "세금보관",
+  householdAlloc:  "가계 배분",
+  actualExpense:   "실제 지출",
+  hhBuffer:        "조정 여유분",
+  businessIncome:  "사업수입",
 };
 
-const $ = (id) => document.getElementById(id);
+// ═══════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════
+let records     = [];
+let expenses    = [];
+let expCats     = [];
+let bizCats     = [];
+let hhCats      = [];
+let bizEditMode = false;
+let hhEditMode  = false;
 
-let records = [];
-let expenses = [];
-let categories = [];
+// ═══════════════════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════════════════
+const $ = (id) => document.getElementById(id);
 
 function uid() {
   if (crypto.randomUUID) return crypto.randomUUID();
@@ -66,375 +65,560 @@ function uid() {
 }
 
 function todayString() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function currentMonthString() {
   return todayString().slice(0, 7);
 }
 
-function toNumber(value) {
-  return Number(String(value ?? "").replaceAll(",", "")) || 0;
+function toNum(v) {
+  return Number(String(v ?? "").replaceAll(",", "")) || 0;
 }
 
-function formatMoney(value) {
-  return `${Math.round(toNumber(value)).toLocaleString("ko-KR")}원`;
+function fmt(v) {
+  return `${Math.round(toNum(v)).toLocaleString("ko-KR")}원`;
 }
 
-function formatInputMoney(value) {
-  const digits = String(value ?? "").replace(/[^\d]/g, "");
-  if (!digits) return "";
-  return Number(digits).toLocaleString("ko-KR");
+function fmtInput(v) {
+  const d = String(v ?? "").replace(/[^\d]/g, "");
+  return d ? Number(d).toLocaleString("ko-KR") : "";
 }
 
-function shortMoney(value) {
-  const number = toNumber(value);
-  const abs = Math.abs(number);
-  if (abs >= 100000000) return `${(number / 100000000).toFixed(1)}억`;
-  if (abs >= 10000) return `${Math.round(number / 10000).toLocaleString("ko-KR")}만`;
-  return Math.round(number).toLocaleString("ko-KR");
+function shortMoney(v) {
+  const n = toNum(v);
+  const a = Math.abs(n);
+  if (a >= 1e8) return `${(n / 1e8).toFixed(1)}억`;
+  if (a >= 1e4) return `${Math.round(n / 1e4).toLocaleString("ko-KR")}만`;
+  return Math.round(n).toLocaleString("ko-KR");
+}
+
+function escHtml(v) {
+  return String(v)
+    .replaceAll("&", "&amp;").replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
 
 function readJson(key, fallback) {
-  const raw = localStorage.getItem(key);
-  if (!raw) return fallback;
   try {
-    return JSON.parse(raw);
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw) ?? fallback;
   } catch {
     return fallback;
   }
 }
 
+// ═══════════════════════════════════════════════════════════
+// LOAD / SAVE
+// ═══════════════════════════════════════════════════════════
 function loadAllData() {
-  categories = readJson(CATEGORIES_KEY, DEFAULT_CATEGORIES);
-  if (!Array.isArray(categories) || categories.length === 0) categories = [...DEFAULT_CATEGORIES];
+  bizCats = readJson(BIZ_CATS_KEY, null);
+  if (!Array.isArray(bizCats) || !bizCats.length) bizCats = DEFAULT_BIZ_CATS.map(c => ({ ...c }));
+
+  hhCats = readJson(HH_CATS_KEY, null);
+  if (!Array.isArray(hhCats) || !hhCats.length) hhCats = DEFAULT_HH_CATS.map(c => ({ ...c }));
+
+  expCats = readJson(EXP_CATS_KEY, DEFAULT_EXP_CATS);
+  if (!Array.isArray(expCats) || !expCats.length) expCats = [...DEFAULT_EXP_CATS];
 
   const stored = readJson(STORAGE_KEY, null);
   if (stored && Array.isArray(stored.records)) {
-    records = stored.records;
+    records  = stored.records.map(migrateRecord);
     expenses = Array.isArray(stored.expenses) ? stored.expenses : readJson(EXPENSES_KEY, []);
-    if (Array.isArray(stored.categories) && stored.categories.length > 0) categories = stored.categories;
+    if (Array.isArray(stored.categories) && stored.categories.length) expCats = stored.categories;
+    if (Array.isArray(stored.bizCats) && stored.bizCats.length) bizCats = stored.bizCats;
+    if (Array.isArray(stored.hhCats) && stored.hhCats.length) hhCats = stored.hhCats;
     return;
   }
 
-  const legacyRecords = readJson(LEGACY_STORAGE_KEY, null);
-  records = Array.isArray(legacyRecords) ? legacyRecords : [];
+  const legacyRecords = readJson(LEGACY_KEY_V1, null);
+  records  = Array.isArray(legacyRecords) ? legacyRecords.map(migrateRecord) : [];
   expenses = readJson(EXPENSES_KEY, []);
+}
+
+function migrateRecord(r) {
+  if (r.bizAlloc || r.hhAlloc) return { ...r, id: r.id || uid() };
+  // Migrate from old flat format
+  return {
+    id: r.id || uid(),
+    month: r.month,
+    businessIncome:  toNum(r.businessIncome),
+    householdBudget: toNum(r.householdBudget),
+    bizAlloc: {
+      biz_vat:    toNum(r.taxReserve),
+      biz_exp:    toNum(r.businessExpense),
+      biz_tax:    0,
+      biz_rsv:    0,
+      biz_salary: toNum(r.ownerPay),
+    },
+    hhAlloc: {
+      hh_fixed:   toNum(r.fixedCost),
+      hh_living:  toNum(r.livingCost),
+      hh_edu:     toNum(r.educationCost),
+      hh_medical: toNum(r.medicalCost),
+      hh_debt:    toNum(r.debtPayment),
+      hh_savings: toNum(r.saving),
+      hh_emerg:   0,
+    },
+    memo: r.memo || "",
+  };
 }
 
 function saveAllData() {
   records.sort((a, b) => a.month.localeCompare(b.month));
   expenses.sort((a, b) => b.expenseDate.localeCompare(a.expenseDate));
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ records, expenses, categories }));
-  localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
-  localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    records, expenses, categories: expCats, bizCats, hhCats,
+  }));
+  localStorage.setItem(BIZ_CATS_KEY,  JSON.stringify(bizCats));
+  localStorage.setItem(HH_CATS_KEY,   JSON.stringify(hhCats));
+  localStorage.setItem(EXP_CATS_KEY,  JSON.stringify(expCats));
 }
 
-function householdSpend(record) {
-  return (
-    toNumber(record.fixedCost) +
-    toNumber(record.livingCost) +
-    toNumber(record.educationCost) +
-    toNumber(record.medicalCost) +
-    toNumber(record.debtPayment) +
-    toNumber(record.saving)
-  );
+// ═══════════════════════════════════════════════════════════
+// COMPUTED VALUES
+// ═══════════════════════════════════════════════════════════
+function sumBizAlloc(record) {
+  return Object.values(record.bizAlloc || {}).reduce((s, v) => s + toNum(v), 0);
 }
 
-function businessAllocated(record) {
-  return toNumber(record.taxReserve) + toNumber(record.businessExpense) + toNumber(record.ownerPay);
+function sumHhAlloc(record) {
+  return Object.values(record.hhAlloc || {}).reduce((s, v) => s + toNum(v), 0);
 }
 
-function householdBuffer(record) {
-  return toNumber(record.householdBudget) - householdSpend(record);
+function hhBuffer(record) {
+  return toNum(record.householdBudget) - sumHhAlloc(record);
+}
+
+function bizBuffer(record) {
+  return toNum(record.businessIncome) - sumBizAlloc(record);
 }
 
 function actualExpenseForMonth(month) {
   return expenses
-    .filter((expense) => expense.expenseDate?.slice(0, 7) === month)
-    .reduce((sum, expense) => sum + toNumber(expense.expenseAmount), 0);
+    .filter(e => e.expenseDate?.slice(0, 7) === month)
+    .reduce((s, e) => s + toNum(e.expenseAmount), 0);
 }
 
-function currentBudgetFormRecord() {
-  const record = {};
-  budgetFields.forEach((field) => {
-    record[field] = moneyFields.includes(field) ? toNumber($(field).value) : $(field).value.trim();
+// ═══════════════════════════════════════════════════════════
+// DYNAMIC FORM FIELDS — RENDER
+// ═══════════════════════════════════════════════════════════
+function renderBizCatFields(allocData = {}) {
+  const container = $("bizCatFields");
+  container.innerHTML = bizCats.map(cat => `
+    <div class="cat-row">
+      <div class="cat-info">
+        <span class="cat-name">${escHtml(cat.name)}</span>
+        <span class="cat-pct-badge">${cat.pct}%</span>
+      </div>
+      <input type="text" inputmode="numeric" class="money-input cat-amount"
+             data-cat-id="${cat.id}" data-section="biz"
+             value="${fmtInput(allocData[cat.id] ?? 0)}" placeholder="0" />
+    </div>
+  `).join("");
+  updateBizPctBadge();
+}
+
+function renderHhCatFields(allocData = {}) {
+  const container = $("hhCatFields");
+  container.innerHTML = hhCats.map(cat => `
+    <div class="cat-row">
+      <div class="cat-info">
+        <span class="cat-name">${escHtml(cat.name)}</span>
+        <span class="cat-pct-badge">${cat.pct}%</span>
+      </div>
+      <input type="text" inputmode="numeric" class="money-input cat-amount"
+             data-cat-id="${cat.id}" data-section="hh"
+             value="${fmtInput(allocData[cat.id] ?? 0)}" placeholder="0" />
+    </div>
+  `).join("");
+  updateHhPctBadge();
+}
+
+function getBizAllocFromForm() {
+  const alloc = {};
+  document.querySelectorAll("#bizCatFields .cat-amount").forEach(input => {
+    alloc[input.dataset.catId] = toNum(input.value);
   });
-  record.id = $("editingId").value || uid();
-  return record;
+  return alloc;
 }
 
-function currentExpenseFormRecord() {
-  const expense = {};
-  expenseFields.forEach((field) => {
-    expense[field] = field === "expenseAmount" ? toNumber($(field).value) : $(field).value.trim();
+function getHhAllocFromForm() {
+  const alloc = {};
+  document.querySelectorAll("#hhCatFields .cat-amount").forEach(input => {
+    alloc[input.dataset.catId] = toNum(input.value);
   });
-  expense.id = $("expenseEditingId").value || uid();
-  return expense;
+  return alloc;
 }
 
+function updateBizPctBadge() {
+  const sum = bizCats.reduce((s, c) => s + (Number(c.pct) || 0), 0);
+  const el = $("bizPctSum");
+  el.textContent = `합계 ${sum}%`;
+  el.className = "pct-badge " + (sum === 100 ? "ok" : sum > 100 ? "over" : "under");
+}
+
+function updateHhPctBadge() {
+  const sum = hhCats.reduce((s, c) => s + (Number(c.pct) || 0), 0);
+  const el = $("hhPctSum");
+  el.textContent = `합계 ${sum}%`;
+  el.className = "pct-badge " + (sum === 100 ? "ok" : sum > 100 ? "over" : "under");
+}
+
+// ═══════════════════════════════════════════════════════════
+// AUTO-DISTRIBUTE (하향식 %)
+// ═══════════════════════════════════════════════════════════
+function distributeBiz() {
+  const total = toNum($("businessIncome").value);
+  bizCats.forEach(cat => {
+    const input = document.querySelector(`#bizCatFields .cat-amount[data-cat-id="${cat.id}"]`);
+    if (input) input.value = fmtInput(Math.round(total * (Number(cat.pct) || 0) / 100));
+  });
+  updateComputedStrip();
+}
+
+function distributeHh() {
+  const total = toNum($("householdBudget").value);
+  hhCats.forEach(cat => {
+    const input = document.querySelector(`#hhCatFields .cat-amount[data-cat-id="${cat.id}"]`);
+    if (input) input.value = fmtInput(Math.round(total * (Number(cat.pct) || 0) / 100));
+  });
+  updateComputedStrip();
+}
+
+// ═══════════════════════════════════════════════════════════
+// COMPUTED STRIP (live)
+// ═══════════════════════════════════════════════════════════
+function updateComputedStrip() {
+  const bizAlloc  = getBizAllocFromForm();
+  const hhAlloc   = getHhAllocFromForm();
+  const bizTotal  = Object.values(bizAlloc).reduce((s, v) => s + v, 0);
+  const hhTotal   = Object.values(hhAlloc).reduce((s, v) => s + v, 0);
+  const bizIncome = toNum($("businessIncome").value);
+  const hhBudget  = toNum($("householdBudget").value);
+  const hhBuf     = hhBudget - hhTotal;
+  const bizBuf    = bizIncome - bizTotal;
+
+  $("businessAllocated").textContent = fmt(bizTotal);
+  $("householdAllocated").textContent = fmt(hhTotal);
+
+  const hhBufEl = $("householdBuffer");
+  hhBufEl.textContent = fmt(hhBuf);
+  hhBufEl.className = "alloc-gap" + (hhBuf < 0 ? " danger" : hhBuf > 0 ? " positive" : "");
+
+  const bizBufEl = $("businessBuffer");
+  bizBufEl.textContent = fmt(bizBuf);
+  bizBufEl.className = "alloc-gap" + (bizBuf < 0 ? " danger" : bizBuf > 0 ? " positive" : "");
+}
+
+// ═══════════════════════════════════════════════════════════
+// EDIT MODE — CATEGORY CRUD
+// ═══════════════════════════════════════════════════════════
+function renderBizEditPanel() {
+  $("bizCatEditor").innerHTML = bizCats.map((cat, i) => `
+    <div class="cat-edit-row">
+      <input type="text" class="cat-edit-name" value="${escHtml(cat.name)}" placeholder="항목명" />
+      <input type="number" class="cat-edit-pct pct-input" value="${cat.pct}" min="0" max="100" placeholder="%" />
+      <span class="pct-label">%</span>
+      <button type="button" class="del-cat-btn" data-biz-del="${i}" title="삭제">✕</button>
+    </div>
+  `).join("");
+}
+
+function renderHhEditPanel() {
+  $("hhCatEditor").innerHTML = hhCats.map((cat, i) => `
+    <div class="cat-edit-row">
+      <input type="text" class="cat-edit-name" value="${escHtml(cat.name)}" placeholder="항목명" />
+      <input type="number" class="cat-edit-pct pct-input" value="${cat.pct}" min="0" max="100" placeholder="%" />
+      <span class="pct-label">%</span>
+      <button type="button" class="del-cat-btn" data-hh-del="${i}" title="삭제">✕</button>
+    </div>
+  `).join("");
+}
+
+function flushBizEdits() {
+  document.querySelectorAll("#bizCatEditor .cat-edit-row").forEach((row, i) => {
+    const name = row.querySelector(".cat-edit-name").value.trim();
+    const pct  = Number(row.querySelector(".cat-edit-pct").value) || 0;
+    if (bizCats[i]) { bizCats[i].name = name || bizCats[i].name; bizCats[i].pct = pct; }
+  });
+  localStorage.setItem(BIZ_CATS_KEY, JSON.stringify(bizCats));
+}
+
+function flushHhEdits() {
+  document.querySelectorAll("#hhCatEditor .cat-edit-row").forEach((row, i) => {
+    const name = row.querySelector(".cat-edit-name").value.trim();
+    const pct  = Number(row.querySelector(".cat-edit-pct").value) || 0;
+    if (hhCats[i]) { hhCats[i].name = name || hhCats[i].name; hhCats[i].pct = pct; }
+  });
+  localStorage.setItem(HH_CATS_KEY, JSON.stringify(hhCats));
+}
+
+function toggleBizEdit() {
+  if (!bizEditMode) {
+    bizEditMode = true;
+    renderBizEditPanel();
+    $("bizEditPanel").classList.remove("hidden");
+    $("bizEditBtn").textContent = "✓ 완료";
+    $("bizEditBtn").classList.add("active");
+  } else {
+    bizEditMode = false;
+    flushBizEdits();
+    $("bizEditPanel").classList.add("hidden");
+    $("bizEditBtn").textContent = "✎ 편집";
+    $("bizEditBtn").classList.remove("active");
+    const cur = getBizAllocFromForm();
+    renderBizCatFields(cur);
+    updateBizPctBadge();
+  }
+}
+
+function toggleHhEdit() {
+  if (!hhEditMode) {
+    hhEditMode = true;
+    renderHhEditPanel();
+    $("hhEditPanel").classList.remove("hidden");
+    $("hhEditBtn").textContent = "✓ 완료";
+    $("hhEditBtn").classList.add("active");
+  } else {
+    hhEditMode = false;
+    flushHhEdits();
+    $("hhEditPanel").classList.add("hidden");
+    $("hhEditBtn").textContent = "✎ 편집";
+    $("hhEditBtn").classList.remove("active");
+    const cur = getHhAllocFromForm();
+    renderHhCatFields(cur);
+    updateHhPctBadge();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// FORM FILL / READ
+// ═══════════════════════════════════════════════════════════
+function readFormRecord() {
+  const bizAlloc = getBizAllocFromForm();
+  const hhAlloc  = getHhAllocFromForm();
+  bizCats.forEach(c => { if (!(c.id in bizAlloc)) bizAlloc[c.id] = 0; });
+  hhCats.forEach(c => { if (!(c.id in hhAlloc))  hhAlloc[c.id]  = 0; });
+  return {
+    id:              $("editingId").value || uid(),
+    month:           $("month").value.trim(),
+    businessIncome:  toNum($("businessIncome").value),
+    householdBudget: toNum($("householdBudget").value),
+    bizAlloc,
+    hhAlloc,
+    memo: $("memo").value.trim(),
+  };
+}
+
+function fillForm(record) {
+  $("editingId").value        = record.id || "";
+  $("month").value            = record.month || currentMonthString();
+  $("businessIncome").value   = fmtInput(record.businessIncome);
+  $("householdBudget").value  = fmtInput(record.householdBudget);
+  $("memo").value             = record.memo || "";
+  renderBizCatFields(record.bizAlloc || {});
+  renderHhCatFields(record.hhAlloc   || {});
+  updateComputedStrip();
+}
+
+// ═══════════════════════════════════════════════════════════
+// DRAFT
+// ═══════════════════════════════════════════════════════════
 function saveDraft() {
-  const draft = currentBudgetFormRecord();
-  localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-  const status = $("draftStatus");
-  status.textContent = "입력 중인 내용이 임시저장되었습니다.";
-}
-
-function loadDraft() {
-  return readJson(DRAFT_KEY, null);
-}
-
-function clearDraft() {
-  localStorage.removeItem(DRAFT_KEY);
-  $("draftStatus").textContent = "저장 완료. 임시저장을 비웠습니다.";
-}
-
-function fillBudgetForm(record) {
-  budgetFields.forEach((field) => {
-    if (!$(field)) return;
-    $(field).value = moneyFields.includes(field) ? formatInputMoney(record[field]) : (record[field] ?? "");
-  });
-  $("editingId").value = record.id || "";
-  updateComputedStrip();
-}
-
-function resetForm({ keepDraft = false } = {}) {
-  $("editingId").value = "";
-  $("monthForm").reset();
-  $("month").value = currentMonthString();
-  if (!keepDraft) localStorage.removeItem(DRAFT_KEY);
-  $("draftStatus").textContent = "입력 내용은 자동 임시저장됩니다.";
-  updateComputedStrip();
+  localStorage.setItem(DRAFT_KEY, JSON.stringify(readFormRecord()));
+  $("draftStatus").textContent = "임시저장됨";
 }
 
 function restoreDraftOrDefault() {
-  const draft = loadDraft();
+  const draft = readJson(DRAFT_KEY, null);
   if (draft) {
-    fillBudgetForm(draft);
-    $("draftStatus").textContent = "이전에 입력하던 임시저장 내용을 불러왔습니다.";
+    fillForm(draft);
+    $("draftStatus").textContent = "이전 임시저장 내용을 불러왔습니다.";
   } else {
     resetForm({ keepDraft: true });
   }
 }
 
+function clearDraft() {
+  localStorage.removeItem(DRAFT_KEY);
+  $("draftStatus").textContent = "저장 완료.";
+}
+
+function resetForm({ keepDraft = false } = {}) {
+  $("editingId").value       = "";
+  $("month").value           = currentMonthString();
+  $("businessIncome").value  = "";
+  $("householdBudget").value = "";
+  $("memo").value            = "";
+  if (!keepDraft) localStorage.removeItem(DRAFT_KEY);
+  $("draftStatus").textContent = "입력 내용은 자동 임시저장됩니다.";
+  renderBizCatFields({});
+  renderHhCatFields({});
+  updateComputedStrip();
+}
+
+// ═══════════════════════════════════════════════════════════
+// EXPENSE FORM
+// ═══════════════════════════════════════════════════════════
 function resetExpenseForm() {
   $("expenseEditingId").value = "";
-  $("expenseForm").reset();
-  $("expenseDate").value = todayString();
-  $("expenseArea").value = "가계";
-  renderCategoryOptions(categories[0] || "");
-  $("expenseMethod").value = "체크카드";
+  $("expenseDate").value      = todayString();
+  $("expenseArea").value      = "가계";
+  $("expenseAmount").value    = "";
+  $("expenseDetail").value    = "";
+  $("expenseMethod").value    = "체크카드";
+  $("expenseMemo").value      = "";
+  renderCategoryOptions(expCats[0] || "");
 }
 
-function saveCategories() {
-  localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
-  saveAllData();
-}
-
-function renderCategoryOptions(selectedValue = $("expenseCategory")?.value) {
-  const select = $("expenseCategory");
-  if (!select) return;
-
-  const options = [...categories];
-  if (selectedValue && !options.includes(selectedValue)) options.push(selectedValue);
-
-  select.innerHTML = options
-    .map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`)
-    .join("");
-  select.value = selectedValue && options.includes(selectedValue) ? selectedValue : (options[0] || "");
+function renderCategoryOptions(selected) {
+  const sel = $("expenseCategory");
+  if (!sel) return;
+  const s = selected ?? sel.value;
+  const opts = [...expCats];
+  if (s && !opts.includes(s)) opts.push(s);
+  sel.innerHTML = opts.map(c =>
+    `<option value="${escHtml(c)}"${c === s ? " selected" : ""}>${escHtml(c)}</option>`
+  ).join("");
 }
 
 function renderCategoryManager() {
   const wrap = $("categoryList");
-  if (!wrap) return;
-
-  const usedCategories = new Set(expenses.map((expense) => expense.expenseCategory).filter(Boolean));
-
-  wrap.innerHTML = categories
-    .map((category) => {
-      const inUse = usedCategories.has(category);
-      return `
-        <div class="category-chip">
-          <span>${escapeHtml(category)}${inUse ? " · 사용 중" : ""}</span>
-          <button class="text-button" type="button" data-category-delete="${escapeHtml(category)}">삭제</button>
-        </div>
-      `;
-    })
-    .join("");
+  const used = new Set(expenses.map(e => e.expenseCategory).filter(Boolean));
+  wrap.innerHTML = expCats.map(c => `
+    <div class="category-chip">
+      <span>${escHtml(c)}${used.has(c) ? " · 사용중" : ""}</span>
+      <button class="text-button" type="button" data-category-delete="${escHtml(c)}">✕</button>
+    </div>
+  `).join("");
 }
 
-function addCategory() {
+function addExpenseCategory() {
   const input = $("newCategoryName");
-  const next = input.value.trim();
+  const next  = input.value.trim();
   if (!next) return;
-  if (categories.includes(next)) {
-    input.value = "";
-    renderCategoryOptions(next);
-    return;
+  if (!expCats.includes(next)) {
+    expCats.push(next);
+    saveAllData();
+    renderCategoryManager();
   }
-
-  categories.push(next);
   input.value = "";
-  saveCategories();
   renderCategoryOptions(next);
+}
+
+function deleteExpenseCategory(cat) {
+  if (!expCats.includes(cat)) return;
+  if (expCats.length <= 1) { alert("분류는 최소 1개가 필요합니다."); return; }
+  const isUsed = expenses.some(e => e.expenseCategory === cat);
+  const msg = isUsed
+    ? `"${cat}" 분류는 기존 지출에 사용 중입니다.\n앞으로 입력 목록에서만 제거됩니다. 계속할까요?`
+    : `"${cat}" 분류를 삭제할까요?`;
+  if (!confirm(msg)) return;
+  const cur = $("expenseCategory").value;
+  expCats = expCats.filter(c => c !== cat);
+  saveAllData();
+  renderCategoryOptions(cur === cat ? expCats[0] : cur);
   renderCategoryManager();
 }
 
-function deleteCategory(category) {
-  if (!categories.includes(category)) return;
-  if (categories.length <= 1) {
-    alert("분류는 최소 1개가 필요합니다.");
-    return;
-  }
-
-  const isUsed = expenses.some((expense) => expense.expenseCategory === category);
-  const message = isUsed
-    ? `"${category}" 분류는 기존 지출에 사용 중입니다. 삭제해도 과거 기록과 분석에는 그대로 남고, 앞으로 입력 목록에서만 빠집니다.`
-    : `"${category}" 분류를 입력 목록에서 삭제할까요?`;
-  if (!window.confirm(message)) return;
-
-  const current = $("expenseCategory").value;
-  categories = categories.filter((item) => item !== category);
-  saveCategories();
-  renderCategoryOptions(current === category ? categories[0] : current);
-  renderCategoryManager();
-  renderCategorySummary();
-}
-
-function updateComputedStrip() {
-  const record = currentBudgetFormRecord();
-  $("businessAllocated").textContent = formatMoney(businessAllocated(record));
-  $("householdAllocated").textContent = formatMoney(householdSpend(record));
-  const buffer = householdBuffer(record);
-  const bufferEl = $("householdBuffer");
-  bufferEl.textContent = formatMoney(buffer);
-  bufferEl.className = buffer < 0 ? "danger" : buffer > 0 ? "positive" : "";
-}
-
-function editRecord(id) {
-  const record = records.find((item) => item.id === id);
-  if (!record) return;
-  fillBudgetForm(record);
-  saveDraft();
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
-function deleteRecord(id) {
-  records = records.filter((item) => item.id !== id);
-  render();
-}
-
-function editExpense(id) {
-  const expense = expenses.find((item) => item.id === id);
-  if (!expense) return;
-  $("expenseEditingId").value = id;
-  renderCategoryOptions(expense.expenseCategory);
-  expenseFields.forEach((field) => {
-    $(field).value = field === "expenseAmount" ? formatInputMoney(expense[field]) : (expense[field] ?? "");
-  });
-  $("expenseForm").scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-function deleteExpense(id) {
-  expenses = expenses.filter((item) => item.id !== id);
-  render();
-}
-
-function selectedExpenseMonth() {
-  return $("expenseMonthFilter").value || currentMonthString();
-}
-
+// ═══════════════════════════════════════════════════════════
+// SUMMARY BAR
+// ═══════════════════════════════════════════════════════════
 function renderSummary() {
-  const latest = records.at(-1);
-  const month = selectedExpenseMonth();
-  const totalDebt = records.reduce((sum, record) => sum + toNumber(record.debtPayment), 0);
-  $("latestHousehold").textContent = latest ? formatMoney(latest.householdBudget) : "0원";
-  $("latestBuffer").textContent = latest ? formatMoney(householdBuffer(latest)) : "0원";
-  $("selectedExpenseTotal").textContent = formatMoney(actualExpenseForMonth(month));
-  $("totalDebt").textContent = formatMoney(totalDebt);
+  const latest     = records.at(-1);
+  const month      = selectedAnalysisMonth();
+  const totalDebt  = records.reduce((s, r) => s + toNum((r.hhAlloc || {})["hh_debt"]), 0);
+
+  $("latestHousehold").textContent    = latest ? fmt(latest.householdBudget) : "0원";
+  $("latestBuffer").textContent       = latest ? fmt(hhBuffer(latest)) : "0원";
+  $("selectedExpenseTotal").textContent = fmt(actualExpenseForMonth(month));
+  $("totalDebt").textContent          = fmt(totalDebt);
 }
 
+// ═══════════════════════════════════════════════════════════
+// TABLES
+// ═══════════════════════════════════════════════════════════
 function renderBudgetTable() {
   const body = $("recordsBody");
   if (!records.length) {
-    body.innerHTML = `<tr class="empty-row"><td colspan="12">아직 입력한 월별 기록이 없습니다.</td></tr>`;
+    body.innerHTML = `<tr class="empty-row"><td colspan="8">아직 입력한 월별 기록이 없습니다.</td></tr>`;
     return;
   }
+  body.innerHTML = records.map(r => {
+    const actual = actualExpenseForMonth(r.month);
+    const hhA    = sumHhAlloc(r);
+    const diff   = toNum(r.householdBudget) - actual;
+    const buf    = hhBuffer(r);
+    return `
+      <tr>
+        <td>${r.month}</td>
+        <td>${fmt(r.businessIncome)}</td>
+        <td>${fmt(r.householdBudget)}</td>
+        <td>${fmt(hhA)}</td>
+        <td>${fmt(actual)}</td>
+        <td class="${diff < 0 ? "danger" : diff > 0 ? "positive" : ""}">${fmt(diff)}</td>
+        <td class="${buf < 0 ? "danger" : buf > 0 ? "positive" : ""}">${fmt(buf)}</td>
+        <td class="td-actions">
+          <button class="text-button" type="button" data-edit="${r.id}">수정</button>
+          <button class="text-button danger-text" type="button" data-delete="${r.id}">삭제</button>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
 
-  body.innerHTML = records
-    .map((record) => {
-      const actual = actualExpenseForMonth(record.month);
-      const actualDiff = toNumber(record.householdBudget) - actual;
-      const diffClass = actualDiff < 0 ? "danger" : actualDiff > 0 ? "positive" : "";
-      return `
-        <tr>
-          <td>${record.month}</td>
-          <td>${formatMoney(record.businessIncome)}</td>
-          <td>${formatMoney(record.taxReserve)}</td>
-          <td>${formatMoney(record.businessExpense)}</td>
-          <td>${formatMoney(record.ownerPay)}</td>
-          <td>${formatMoney(record.householdBudget)}</td>
-          <td>${formatMoney(householdSpend(record))}</td>
-          <td>${formatMoney(actual)}</td>
-          <td class="${diffClass}">${formatMoney(actualDiff)}</td>
-          <td>${formatMoney(record.debtPayment)}</td>
-          <td>${formatMoney(record.saving)}</td>
-          <td>
-            <button class="text-button" type="button" data-edit="${record.id}">수정</button>
-            <button class="text-button" type="button" data-delete="${record.id}">삭제</button>
-          </td>
-        </tr>
-      `;
-    })
-    .join("");
+function selectedLedgerMonth() {
+  return $("ledgerMonthFilter").value || currentMonthString();
+}
+
+function selectedAnalysisMonth() {
+  return $("expenseMonthFilter").value || currentMonthString();
 }
 
 function renderExpensesTable() {
-  const body = $("expensesBody");
-  const month = selectedExpenseMonth();
-  const filtered = expenses.filter((expense) => expense.expenseDate?.slice(0, 7) === month);
-
+  const body     = $("expensesBody");
+  const month    = selectedLedgerMonth();
+  const filtered = expenses.filter(e => e.expenseDate?.slice(0, 7) === month);
   if (!filtered.length) {
     body.innerHTML = `<tr class="empty-row"><td colspan="8">선택한 월의 지출 내역이 없습니다.</td></tr>`;
     return;
   }
-
-  body.innerHTML = filtered
-    .map(
-      (expense) => `
-        <tr>
-          <td>${expense.expenseDate}</td>
-          <td>${expense.expenseArea}</td>
-          <td>${expense.expenseCategory}</td>
-          <td class="text-left">${escapeHtml(expense.expenseDetail)}</td>
-          <td>${expense.expenseMethod}</td>
-          <td>${formatMoney(expense.expenseAmount)}</td>
-          <td class="text-left">${escapeHtml(expense.expenseMemo || "")}</td>
-          <td>
-            <button class="text-button" type="button" data-expense-edit="${expense.id}">수정</button>
-            <button class="text-button" type="button" data-expense-delete="${expense.id}">삭제</button>
-          </td>
-        </tr>
-      `,
-    )
-    .join("");
+  body.innerHTML = filtered.map(e => `
+    <tr>
+      <td>${e.expenseDate}</td>
+      <td>${e.expenseArea}</td>
+      <td>${e.expenseCategory}</td>
+      <td class="text-left">${escHtml(e.expenseDetail)}</td>
+      <td>${e.expenseMethod}</td>
+      <td>${fmt(e.expenseAmount)}</td>
+      <td class="text-left">${escHtml(e.expenseMemo || "")}</td>
+      <td class="td-actions">
+        <button class="text-button" type="button" data-expense-edit="${e.id}">수정</button>
+        <button class="text-button danger-text" type="button" data-expense-delete="${e.id}">삭제</button>
+      </td>
+    </tr>
+  `).join("");
 }
 
+// ═══════════════════════════════════════════════════════════
+// ANALYSIS
+// ═══════════════════════════════════════════════════════════
 function renderCategorySummary() {
-  const wrap = $("categorySummary");
-  const month = selectedExpenseMonth();
-  const filtered = expenses.filter((expense) => expense.expenseDate?.slice(0, 7) === month);
-  const total = filtered.reduce((sum, expense) => sum + toNumber(expense.expenseAmount), 0);
+  const wrap     = $("categorySummary");
+  const month    = selectedAnalysisMonth();
+  const filtered = expenses.filter(e => e.expenseDate?.slice(0, 7) === month);
+  const total    = filtered.reduce((s, e) => s + toNum(e.expenseAmount), 0);
 
-  const byCategory = filtered.reduce((map, expense) => {
-    const key = `${expense.expenseArea} · ${expense.expenseCategory}`;
-    map[key] = (map[key] || 0) + toNumber(expense.expenseAmount);
-    return map;
+  const byKey = filtered.reduce((m, e) => {
+    const k = `${e.expenseArea} · ${e.expenseCategory}`;
+    m[k] = (m[k] || 0) + toNum(e.expenseAmount);
+    return m;
   }, {});
 
-  const rows = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
-
+  const rows = Object.entries(byKey).sort((a, b) => b[1] - a[1]);
   if (!rows.length) {
     wrap.innerHTML = `<p class="empty-note">선택한 월에 입력된 지출이 없습니다.</p>`;
     return;
@@ -443,193 +627,175 @@ function renderCategorySummary() {
   wrap.innerHTML = `
     <div class="summary-total">
       <span>${month} 실제 지출 합계</span>
-      <strong>${formatMoney(total)}</strong>
+      <strong>${fmt(total)}</strong>
     </div>
-    ${rows
-      .map(([label, value]) => {
-        const percent = total ? Math.round((value / total) * 100) : 0;
-        return `
-          <div class="category-row">
-            <div class="category-row-top">
-              <span>${label}</span>
-              <strong>${formatMoney(value)}</strong>
-            </div>
-            <div class="bar"><i style="width: ${percent}%"></i></div>
-            <small>${percent}%</small>
+    ${rows.map(([label, value]) => {
+      const pct = total ? Math.round(value / total * 100) : 0;
+      return `
+        <div class="category-row">
+          <div class="category-row-top">
+            <span>${label}</span>
+            <strong>${fmt(value)}</strong>
           </div>
-        `;
-      })
-      .join("")}
+          <div class="bar"><i style="width:${pct}%"></i></div>
+          <small>${pct}%</small>
+        </div>
+      `;
+    }).join("")}
   `;
 }
 
-function metricValue(record, metric) {
-  if (metric === "householdSpend") return householdSpend(record);
-  if (metric === "actualExpense") return actualExpenseForMonth(record.month);
-  if (metric === "buffer") return householdBuffer(record);
-  return toNumber(record[metric]);
+function metricValue(r, metric) {
+  if (metric === "householdAlloc") return sumHhAlloc(r);
+  if (metric === "actualExpense")  return actualExpenseForMonth(r.month);
+  if (metric === "hhBuffer")       return hhBuffer(r);
+  return toNum(r[metric]);
 }
 
 function renderChart() {
-  const svg = $("trendChart");
+  const svg    = $("trendChart");
   const metric = $("chartMetric").value;
-  const width = 720;
-  const height = 300;
+  const W = 720, H = 300;
   const pad = { top: 24, right: 24, bottom: 46, left: 72 };
-  const plotW = width - pad.left - pad.right;
-  const plotH = height - pad.top - pad.bottom;
+  const pw  = W - pad.left - pad.right;
+  const ph  = H - pad.top  - pad.bottom;
 
   if (!records.length) {
-    svg.innerHTML = `<text x="360" y="150" text-anchor="middle" fill="#667085">월별 데이터를 입력하면 차트가 표시됩니다.</text>`;
+    svg.innerHTML = `<text x="360" y="150" text-anchor="middle" fill="#94a3b8" font-size="14">월별 데이터를 입력하면 차트가 표시됩니다.</text>`;
     $("chartLegend").textContent = "";
     return;
   }
 
-  const values = records.map((record) => metricValue(record, metric));
-  const min = Math.min(0, ...values);
-  const max = Math.max(...values, 1);
+  const vals  = records.map(r => metricValue(r, metric));
+  const min   = Math.min(0, ...vals);
+  const max   = Math.max(...vals, 1);
   const range = max - min || 1;
-  const xStep = records.length > 1 ? plotW / (records.length - 1) : 0;
-  const points = records.map((record, index) => {
-    const x = pad.left + (records.length > 1 ? index * xStep : plotW / 2);
-    const y = pad.top + plotH - ((metricValue(record, metric) - min) / range) * plotH;
-    return { x, y, record };
-  });
+  const xStep = records.length > 1 ? pw / (records.length - 1) : 0;
 
-  const gridLines = Array.from({ length: 5 }, (_, index) => {
-    const ratio = index / 4;
-    const y = pad.top + plotH * ratio;
-    const value = max - range * ratio;
+  const points = records.map((r, i) => ({
+    x: pad.left + (records.length > 1 ? i * xStep : pw / 2),
+    y: pad.top + ph - ((metricValue(r, metric) - min) / range) * ph,
+    record: r,
+  }));
+
+  const gridLines = Array.from({ length: 5 }, (_, i) => {
+    const ratio = i / 4;
+    const y = pad.top + ph * ratio;
+    const v = max - range * ratio;
     return `
-      <line x1="${pad.left}" x2="${width - pad.right}" y1="${y}" y2="${y}" stroke="#e5e7eb" />
-      <text x="${pad.left - 10}" y="${y + 4}" text-anchor="end" fill="#667085" font-size="11">${shortMoney(value)}</text>
+      <line x1="${pad.left}" x2="${W - pad.right}" y1="${y}" y2="${y}" stroke="#e2e8f0" stroke-dasharray="4 2"/>
+      <text x="${pad.left - 8}" y="${y + 4}" text-anchor="end" fill="#94a3b8" font-size="11">${shortMoney(v)}</text>
     `;
   }).join("");
 
-  const path = points
-    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`)
-    .join(" ");
+  const path = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
 
-  const dots = points
-    .map(
-      ({ x, y, record }) => `
-        <circle cx="${x}" cy="${y}" r="4.5" fill="#0f766e">
-          <title>${record.month}: ${formatMoney(metricValue(record, metric))}</title>
-        </circle>
-      `,
-    )
-    .join("");
+  const dots = points.map(({ x, y, record }) => `
+    <circle cx="${x}" cy="${y}" r="5" fill="#0284c7" stroke="#fff" stroke-width="2">
+      <title>${record.month}: ${fmt(metricValue(record, metric))}</title>
+    </circle>
+  `).join("");
 
-  const labels = points
-    .map(
-      ({ x, record }, index) => `
-        <text x="${x}" y="${height - 18}" text-anchor="middle" fill="#667085" font-size="11">
-          ${records.length > 8 && index % 2 ? "" : record.month.slice(2)}
-        </text>
-      `,
-    )
-    .join("");
+  const labels = points.map(({ x, record }, i) => `
+    <text x="${x}" y="${H - 14}" text-anchor="middle" fill="#94a3b8" font-size="11">
+      ${records.length > 8 && i % 2 ? "" : record.month.slice(2)}
+    </text>
+  `).join("");
 
   svg.innerHTML = `
-    <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" />
+    <rect x="0" y="0" width="${W}" height="${H}" fill="#f8fafc" rx="8"/>
     ${gridLines}
-    <line x1="${pad.left}" x2="${pad.left}" y1="${pad.top}" y2="${height - pad.bottom}" stroke="#cbd5e1" />
-    <line x1="${pad.left}" x2="${width - pad.right}" y1="${height - pad.bottom}" y2="${height - pad.bottom}" stroke="#cbd5e1" />
-    <path d="${path}" fill="none" stroke="#0f766e" stroke-width="3" />
-    ${dots}
-    ${labels}
+    <line x1="${pad.left}" x2="${pad.left}" y1="${pad.top}" y2="${H - pad.bottom}" stroke="#cbd5e1"/>
+    <line x1="${pad.left}" x2="${W - pad.right}" y1="${H - pad.bottom}" y2="${H - pad.bottom}" stroke="#cbd5e1"/>
+    <path d="${path}" fill="none" stroke="#0284c7" stroke-width="2.5" stroke-linejoin="round"/>
+    ${dots}${labels}
   `;
 
   const latest = records.at(-1);
-  $("chartLegend").textContent = `${metricLabels[metric]} 최근값: ${formatMoney(metricValue(latest, metric))}`;
+  $("chartLegend").textContent = `${METRIC_LABELS[metric] || metric} 최근값: ${fmt(metricValue(latest, metric))}`;
 }
 
-function render() {
-  saveAllData();
-  renderSummary();
-  renderBudgetTable();
-  renderExpensesTable();
-  renderCategoryManager();
-  renderCategorySummary();
-  renderChart();
+// ═══════════════════════════════════════════════════════════
+// RECORD EDIT / DELETE
+// ═══════════════════════════════════════════════════════════
+function editRecord(id) {
+  const record = records.find(r => r.id === id);
+  if (!record) return;
+  fillForm(record);
+  saveDraft();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  document.querySelector('[data-tab="budget"]').click();
 }
 
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+function deleteRecord(id) {
+  const r = records.find(r => r.id === id);
+  if (!r) return;
+  if (!confirm(`${r.month} 예산 기록을 삭제할까요?\n복구할 수 없습니다.`)) return;
+  records = records.filter(r => r.id !== id);
+  render();
 }
 
-function download(filename, content, mimeType) {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
+function editExpense(id) {
+  const e = expenses.find(e => e.id === id);
+  if (!e) return;
+  $("expenseEditingId").value = id;
+  renderCategoryOptions(e.expenseCategory);
+  $("expenseDate").value      = e.expenseDate;
+  $("expenseArea").value      = e.expenseArea;
+  $("expenseAmount").value    = fmtInput(e.expenseAmount);
+  $("expenseDetail").value    = e.expenseDetail;
+  $("expenseMethod").value    = e.expenseMethod;
+  $("expenseMemo").value      = e.expenseMemo || "";
+  $("expenseForm").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function deleteExpense(id) {
+  const e = expenses.find(e => e.id === id);
+  if (!e) return;
+  if (!confirm(`"${e.expenseDetail}" 지출을 삭제할까요?`)) return;
+  expenses = expenses.filter(e => e.id !== id);
+  render();
+}
+
+// ═══════════════════════════════════════════════════════════
+// EXPORT / IMPORT
+// ═══════════════════════════════════════════════════════════
+function dl(filename, content, mime) {
+  const url = URL.createObjectURL(new Blob([content], { type: mime }));
+  Object.assign(document.createElement("a"), { href: url, download: filename }).click();
   URL.revokeObjectURL(url);
 }
 
 function exportJson() {
-  download(
+  dl(
     "budget-tracker-data.json",
-    JSON.stringify({ records, expenses, categories, exportedAt: new Date().toISOString() }, null, 2),
-    "application/json",
+    JSON.stringify({ records, expenses, categories: expCats, bizCats, hhCats, exportedAt: new Date().toISOString() }, null, 2),
+    "application/json"
   );
 }
 
 function makeCsv(headers, rows) {
   return [headers, ...rows]
-    .map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(","))
+    .map(row => row.map(c => `"${String(c ?? "").replaceAll('"', '""')}"`).join(","))
     .join("\n");
 }
 
 function exportBudgetCsv() {
-  const headers = [
-    "월",
-    "사업수입",
-    "세금보관",
-    "경비",
-    "월급이체",
-    "가계예산",
-    "예산배분",
-    "실제지출",
-    "예산-실제",
-    "대출상환",
-    "저축비상금",
-    "메모",
-  ];
-  const rows = records.map((record) => [
-    record.month,
-    record.businessIncome,
-    record.taxReserve,
-    record.businessExpense,
-    record.ownerPay,
-    record.householdBudget,
-    householdSpend(record),
-    actualExpenseForMonth(record.month),
-    toNumber(record.householdBudget) - actualExpenseForMonth(record.month),
-    record.debtPayment,
-    record.saving,
-    record.memo || "",
-  ]);
-  download("budget-tracker-budget-records.csv", `\ufeff${makeCsv(headers, rows)}`, "text/csv;charset=utf-8");
+  const hhNames = hhCats.map(c => c.name);
+  const headers = ["월", "사업수입", "가계예산", ...hhNames, "가계배분", "실제지출", "예산-실제", "가계여유분", "메모"];
+  const rows = records.map(r => {
+    const actual  = actualExpenseForMonth(r.month);
+    const hhA     = sumHhAlloc(r);
+    const hhVals  = hhCats.map(c => (r.hhAlloc || {})[c.id] || 0);
+    return [r.month, r.businessIncome, r.householdBudget, ...hhVals, hhA, actual, toNum(r.householdBudget) - actual, hhBuffer(r), r.memo || ""];
+  });
+  dl("budget-records.csv", `﻿${makeCsv(headers, rows)}`, "text/csv;charset=utf-8");
 }
 
 function exportExpenseCsv() {
   const headers = ["날짜", "영역", "분류", "내용", "결제수단", "가격", "메모"];
-  const rows = expenses.map((expense) => [
-    expense.expenseDate,
-    expense.expenseArea,
-    expense.expenseCategory,
-    expense.expenseDetail,
-    expense.expenseMethod,
-    expense.expenseAmount,
-    expense.expenseMemo || "",
-  ]);
-  download("budget-tracker-expenses.csv", `\ufeff${makeCsv(headers, rows)}`, "text/csv;charset=utf-8");
+  const rows    = expenses.map(e => [e.expenseDate, e.expenseArea, e.expenseCategory, e.expenseDetail, e.expenseMethod, e.expenseAmount, e.expenseMemo || ""]);
+  dl("expenses.csv", `﻿${makeCsv(headers, rows)}`, "text/csv;charset=utf-8");
 }
 
 function importJson(file) {
@@ -637,21 +803,19 @@ function importJson(file) {
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      const imported = JSON.parse(String(reader.result));
-      if (Array.isArray(imported)) {
-        records = imported.map((record) => ({ ...record, id: record.id || uid() }));
+      const data = JSON.parse(reader.result);
+      if (Array.isArray(data)) {
+        records = data.map(r => ({ ...migrateRecord(r), id: r.id || uid() }));
         expenses = [];
       } else {
-        records = Array.isArray(imported.records)
-          ? imported.records.map((record) => ({ ...record, id: record.id || uid() }))
-          : [];
-        expenses = Array.isArray(imported.expenses)
-          ? imported.expenses.map((expense) => ({ ...expense, id: expense.id || uid() }))
-          : [];
-        if (Array.isArray(imported.categories) && imported.categories.length > 0) {
-          categories = imported.categories;
-        }
+        records  = Array.isArray(data.records)  ? data.records.map(r => ({ ...migrateRecord(r), id: r.id || uid() })) : [];
+        expenses = Array.isArray(data.expenses) ? data.expenses.map(e => ({ ...e, id: e.id || uid() })) : [];
+        if (Array.isArray(data.categories) && data.categories.length) expCats = data.categories;
+        if (Array.isArray(data.bizCats)    && data.bizCats.length)    bizCats = data.bizCats;
+        if (Array.isArray(data.hhCats)     && data.hhCats.length)     hhCats  = data.hhCats;
       }
+      renderBizCatFields({});
+      renderHhCatFields({});
       renderCategoryOptions();
       render();
       alert("데이터를 가져왔습니다.");
@@ -662,98 +826,194 @@ function importJson(file) {
   reader.readAsText(file);
 }
 
+// ═══════════════════════════════════════════════════════════
+// MAIN RENDER
+// ═══════════════════════════════════════════════════════════
+function render() {
+  saveAllData();
+  renderSummary();
+  renderBudgetTable();
+  renderExpensesTable();
+  renderCategoryManager();
+  renderCategorySummary();
+  renderChart();
+}
+
+// ═══════════════════════════════════════════════════════════
+// EVENTS
+// ═══════════════════════════════════════════════════════════
 function bindEvents() {
-  document.querySelectorAll(".money-input").forEach((input) => {
-    input.addEventListener("input", () => {
-      input.value = formatInputMoney(input.value);
-    });
-    input.addEventListener("blur", () => {
-      input.value = formatInputMoney(input.value);
-    });
+  // Money input: format as you type
+  document.addEventListener("input", e => {
+    if (!e.target.classList.contains("money-input")) return;
+    const raw = e.target.value.replace(/[^\d]/g, "");
+    e.target.value = raw ? Number(raw).toLocaleString("ko-KR") : "";
   });
 
-  document.querySelectorAll(".tab-button").forEach((button) => {
-    button.addEventListener("click", () => {
-      const tab = button.dataset.tab;
-      document.querySelectorAll(".tab-button").forEach((item) => item.classList.toggle("active", item === button));
-      document.querySelectorAll(".tab-panel").forEach((panel) => {
-        panel.classList.toggle("active", panel.dataset.tabPanel === tab);
-      });
+  // Tabs
+  document.querySelectorAll(".tab-button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.tab;
+      document.querySelectorAll(".tab-button").forEach(b => b.classList.toggle("active", b === btn));
+      document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.dataset.tabPanel === tab));
     });
   });
 
-  $("monthForm").addEventListener("input", () => {
-    updateComputedStrip();
-    saveDraft();
-  });
+  // Auto-distribute on parent input change
+  $("businessIncome").addEventListener("input",  () => { distributeBiz(); saveDraft(); });
+  $("householdBudget").addEventListener("input", () => { distributeHh();  saveDraft(); });
 
-  $("monthForm").addEventListener("submit", (event) => {
-    event.preventDefault();
-    const next = currentBudgetFormRecord();
-    const existingIndex = records.findIndex((record) => record.id === next.id || record.month === next.month);
-    if (existingIndex >= 0) {
-      next.id = records[existingIndex].id;
-      records[existingIndex] = next;
-    } else {
-      records.push(next);
-    }
+  // Cat amount changes → update strip + draft
+  $("bizCatFields").addEventListener("input", () => { updateComputedStrip(); saveDraft(); });
+  $("hhCatFields").addEventListener("input",  () => { updateComputedStrip(); saveDraft(); });
+
+  // Other form fields → save draft
+  $("month").addEventListener("change", saveDraft);
+  $("memo").addEventListener("input",   saveDraft);
+
+  // Budget form submit
+  $("monthForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const next = readFormRecord();
+    if (!next.month) { alert("월을 선택해주세요."); return; }
+    const idx = records.findIndex(r => r.id === next.id || r.month === next.month);
+    if (idx >= 0) { next.id = records[idx].id; records[idx] = next; }
+    else records.push(next);
     clearDraft();
     render();
     resetForm();
   });
 
-  $("expenseForm").addEventListener("submit", (event) => {
-    event.preventDefault();
-    const next = currentExpenseFormRecord();
-    const existingIndex = expenses.findIndex((expense) => expense.id === next.id);
-    if (existingIndex >= 0) {
-      expenses[existingIndex] = next;
-    } else {
-      expenses.push(next);
-    }
-    $("expenseMonthFilter").value = next.expenseDate.slice(0, 7);
+  $("resetFormBtn").addEventListener("click", () => resetForm());
+
+  // Budget table actions
+  $("recordsBody").addEventListener("click", e => {
+    if (e.target.dataset.edit)   editRecord(e.target.dataset.edit);
+    if (e.target.dataset.delete) deleteRecord(e.target.dataset.delete);
+  });
+
+  // Edit mode toggles
+  $("bizEditBtn").addEventListener("click", toggleBizEdit);
+  $("hhEditBtn").addEventListener("click",  toggleHhEdit);
+
+  // Live pct badge update while editing
+  $("bizCatEditor").addEventListener("input", () => { flushBizEdits(); updateBizPctBadge(); });
+  $("hhCatEditor").addEventListener("input",  () => { flushHhEdits();  updateHhPctBadge(); });
+
+  // Delete cat row buttons
+  $("bizCatEditor").addEventListener("click", e => {
+    const idx = e.target.dataset.bizDel;
+    if (idx === undefined) return;
+    flushBizEdits();
+    bizCats.splice(Number(idx), 1);
+    renderBizEditPanel();
+    updateBizPctBadge();
+    localStorage.setItem(BIZ_CATS_KEY, JSON.stringify(bizCats));
+  });
+  $("hhCatEditor").addEventListener("click", e => {
+    const idx = e.target.dataset.hhDel;
+    if (idx === undefined) return;
+    flushHhEdits();
+    hhCats.splice(Number(idx), 1);
+    renderHhEditPanel();
+    updateHhPctBadge();
+    localStorage.setItem(HH_CATS_KEY, JSON.stringify(hhCats));
+  });
+
+  // Add biz cat
+  $("addBizCatBtn").addEventListener("click", () => {
+    const name = $("newBizCatName").value.trim();
+    const pct  = Number($("newBizCatPct").value) || 0;
+    if (!name) return;
+    flushBizEdits();
+    bizCats.push({ id: `biz_${uid().slice(0, 8)}`, name, pct });
+    $("newBizCatName").value = "";
+    $("newBizCatPct").value  = "";
+    renderBizEditPanel();
+    updateBizPctBadge();
+    localStorage.setItem(BIZ_CATS_KEY, JSON.stringify(bizCats));
+  });
+  $("newBizCatName").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("addBizCatBtn").click(); } });
+
+  // Add hh cat
+  $("addHhCatBtn").addEventListener("click", () => {
+    const name = $("newHhCatName").value.trim();
+    const pct  = Number($("newHhCatPct").value) || 0;
+    if (!name) return;
+    flushHhEdits();
+    hhCats.push({ id: `hh_${uid().slice(0, 8)}`, name, pct });
+    $("newHhCatName").value = "";
+    $("newHhCatPct").value  = "";
+    renderHhEditPanel();
+    updateHhPctBadge();
+    localStorage.setItem(HH_CATS_KEY, JSON.stringify(hhCats));
+  });
+  $("newHhCatName").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("addHhCatBtn").click(); } });
+
+  // Expense form
+  $("expenseForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const next = {
+      id:              $("expenseEditingId").value || uid(),
+      expenseDate:     $("expenseDate").value,
+      expenseArea:     $("expenseArea").value,
+      expenseCategory: $("expenseCategory").value,
+      expenseDetail:   $("expenseDetail").value.trim(),
+      expenseMethod:   $("expenseMethod").value,
+      expenseAmount:   toNum($("expenseAmount").value),
+      expenseMemo:     $("expenseMemo").value.trim(),
+    };
+    const idx = expenses.findIndex(e => e.id === next.id);
+    if (idx >= 0) expenses[idx] = next;
+    else expenses.push(next);
+    const month = next.expenseDate.slice(0, 7);
+    $("ledgerMonthFilter").value  = month;
+    $("expenseMonthFilter").value = month;
     render();
     resetExpenseForm();
   });
 
-  $("recordsBody").addEventListener("click", (event) => {
-    const editId = event.target.dataset.edit;
-    const deleteId = event.target.dataset.delete;
-    if (editId) editRecord(editId);
-    if (deleteId) deleteRecord(deleteId);
-  });
-
-  $("expensesBody").addEventListener("click", (event) => {
-    const editId = event.target.dataset.expenseEdit;
-    const deleteId = event.target.dataset.expenseDelete;
-    if (editId) editExpense(editId);
-    if (deleteId) deleteExpense(deleteId);
-  });
-
-  $("addCategoryBtn").addEventListener("click", addCategory);
-  $("newCategoryName").addEventListener("keydown", (event) => {
-    if (event.key !== "Enter") return;
-    event.preventDefault();
-    addCategory();
-  });
-  $("categoryList").addEventListener("click", (event) => {
-    const category = event.target.dataset.categoryDelete;
-    if (category) deleteCategory(category);
-  });
-
-  $("resetFormBtn").addEventListener("click", () => resetForm());
   $("resetExpenseBtn").addEventListener("click", resetExpenseForm);
+
+  $("expensesBody").addEventListener("click", e => {
+    if (e.target.dataset.expenseEdit)   editExpense(e.target.dataset.expenseEdit);
+    if (e.target.dataset.expenseDelete) deleteExpense(e.target.dataset.expenseDelete);
+  });
+
+  // Expense categories
+  $("addCategoryBtn").addEventListener("click", addExpenseCategory);
+  $("newCategoryName").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addExpenseCategory(); } });
+  $("categoryList").addEventListener("click", e => {
+    if (e.target.dataset.categoryDelete) deleteExpenseCategory(e.target.dataset.categoryDelete);
+  });
+
+  // Analysis
   $("chartMetric").addEventListener("change", renderChart);
-  $("expenseMonthFilter").addEventListener("change", render);
+  $("expenseMonthFilter").addEventListener("change", () => { renderCategorySummary(); renderSummary(); });
+
+  // Ledger month filter
+  $("ledgerMonthFilter").addEventListener("change", renderExpensesTable);
+
+  // Backup
   $("exportJsonBtn").addEventListener("click", exportJson);
   $("downloadCsvBtn").addEventListener("click", exportBudgetCsv);
   $("downloadExpenseCsvBtn").addEventListener("click", exportExpenseCsv);
-  $("importJsonInput").addEventListener("change", (event) => importJson(event.target.files[0]));
+  $("importJsonInput").addEventListener("change", e => importJson(e.target.files[0]));
 }
 
+// ═══════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════
 loadAllData();
+renderBizCatFields({});
+renderHhCatFields({});
+renderCategoryOptions();
 bindEvents();
-$("expenseMonthFilter").value = records.at(-1)?.month || currentMonthString();
+
+const initMonth = records.at(-1)?.month || currentMonthString();
+$("expenseMonthFilter").value = initMonth;
+$("ledgerMonthFilter").value  = initMonth;
+
 restoreDraftOrDefault();
 resetExpenseForm();
 render();

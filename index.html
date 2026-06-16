@@ -12,25 +12,27 @@
     </header>
 
     <main>
+      <!-- 요약 카드 -->
       <section class="summary-grid" aria-label="요약">
-        <article>
+        <article class="summary-card card-blue">
           <span>최근 가계예산</span>
           <strong id="latestHousehold">0원</strong>
         </article>
-        <article>
+        <article class="summary-card card-teal">
           <span>최근 조정 여유분</span>
           <strong id="latestBuffer">0원</strong>
         </article>
-        <article>
+        <article class="summary-card card-indigo">
           <span>선택월 실제 지출</span>
           <strong id="selectedExpenseTotal">0원</strong>
         </article>
-        <article>
+        <article class="summary-card card-emerald">
           <span>누적 대출상환</span>
           <strong id="totalDebt">0원</strong>
         </article>
       </section>
 
+      <!-- 탭 네비게이션 -->
       <nav class="tab-nav" aria-label="주요 메뉴">
         <button class="tab-button active" type="button" data-tab="budget">월별 예산</button>
         <button class="tab-button" type="button" data-tab="ledger">가계부</button>
@@ -38,6 +40,9 @@
         <button class="tab-button" type="button" data-tab="backup">백업</button>
       </nav>
 
+      <!-- ══════════════════════════════════════
+           월별 예산 탭
+      ══════════════════════════════════════ -->
       <section class="tab-panel active" data-tab-panel="budget">
         <form id="monthForm" class="entry-panel">
           <div class="panel-title">
@@ -45,98 +50,97 @@
               <h2>월별 예산 입력</h2>
               <p id="draftStatus" class="status-text">입력 내용은 자동 임시저장됩니다.</p>
             </div>
-            <button id="resetFormBtn" type="button" title="새 입력">새로 입력</button>
+            <button id="resetFormBtn" type="button" class="ghost-btn">새로 입력</button>
           </div>
-
           <input type="hidden" id="editingId" />
 
-          <div class="form-grid">
+          <!-- 기본 입력 -->
+          <div class="form-grid-3">
             <label>
               월
               <input id="month" type="month" required />
             </label>
             <label>
               사업수입
-              <input id="businessIncome" type="text" inputmode="numeric" class="money-input" />
+              <input id="businessIncome" type="text" inputmode="numeric" class="money-input" placeholder="0" />
             </label>
             <label>
               가계예산
-              <input id="householdBudget" type="text" inputmode="numeric" class="money-input" />
-              <small class="field-hint">남편 생활비 + 내 근로소득 + 사업이체</small>
+              <input id="householdBudget" type="text" inputmode="numeric" class="money-input" placeholder="0" />
+              <small class="field-hint">남편 생활비 + 근로소득 + 사업이체</small>
             </label>
           </div>
 
-          <div class="split-title">사업계좌</div>
-          <div class="form-grid">
-            <label>
-              종소세+부가세 보관
-              <input id="taxReserve" type="text" inputmode="numeric" class="money-input" />
-            </label>
-            <label>
-              경비
-              <input id="businessExpense" type="text" inputmode="numeric" class="money-input" />
-            </label>
-            <label>
-              월급 이체
-              <input id="ownerPay" type="text" inputmode="numeric" class="money-input" />
-            </label>
+          <!-- ── 사업계좌 배분 ── -->
+          <div class="section-header">
+            <span class="split-title">사업계좌 배분</span>
+            <div class="section-header-right">
+              <span id="bizPctSum" class="pct-badge">합계 100%</span>
+              <button id="bizEditBtn" type="button" class="edit-mode-btn">✎ 편집</button>
+            </div>
           </div>
 
-          <div class="split-title">가계계좌</div>
-          <div class="form-grid">
-            <label>
-              고정지출
-              <input id="fixedCost" type="text" inputmode="numeric" class="money-input" />
-            </label>
-            <label>
-              생활비
-              <input id="livingCost" type="text" inputmode="numeric" class="money-input" />
-            </label>
-            <label>
-              교육비+용돈
-              <input id="educationCost" type="text" inputmode="numeric" class="money-input" />
-            </label>
-            <label>
-              보험/의료
-              <input id="medicalCost" type="text" inputmode="numeric" class="money-input" />
-            </label>
-            <label>
-              대출상환
-              <input id="debtPayment" type="text" inputmode="numeric" class="money-input" />
-            </label>
-            <label>
-              저축/비상금
-              <input id="saving" type="text" inputmode="numeric" class="money-input" />
-            </label>
+          <!-- 편집 패널 -->
+          <div id="bizEditPanel" class="edit-panel hidden">
+            <div id="bizCatEditor" class="cat-editor-list"></div>
+            <div class="add-cat-row">
+              <input id="newBizCatName" type="text" placeholder="항목명 (예: 적립금)" />
+              <input id="newBizCatPct" type="number" min="0" max="100" step="1" placeholder="%" class="pct-input" />
+              <button id="addBizCatBtn" type="button" class="small-btn">+ 추가</button>
+            </div>
           </div>
 
-          <label>
+          <!-- 동적 사업 카테고리 필드 -->
+          <div id="bizCatFields" class="cat-fields"></div>
+
+          <div class="alloc-footer">
+            <span class="alloc-label">사업 배분 합계</span>
+            <strong id="businessAllocated" class="alloc-total">0원</strong>
+            <span class="alloc-gap-label">잔여</span>
+            <strong id="businessBuffer" class="alloc-gap">0원</strong>
+          </div>
+
+          <!-- ── 가계계좌 배분 ── -->
+          <div class="section-header mt-section">
+            <span class="split-title">가계계좌 배분</span>
+            <div class="section-header-right">
+              <span id="hhPctSum" class="pct-badge">합계 100%</span>
+              <button id="hhEditBtn" type="button" class="edit-mode-btn">✎ 편집</button>
+            </div>
+          </div>
+
+          <div id="hhEditPanel" class="edit-panel hidden">
+            <div id="hhCatEditor" class="cat-editor-list"></div>
+            <div class="add-cat-row">
+              <input id="newHhCatName" type="text" placeholder="항목명 (예: 여행 적립)" />
+              <input id="newHhCatPct" type="number" min="0" max="100" step="1" placeholder="%" class="pct-input" />
+              <button id="addHhCatBtn" type="button" class="small-btn">+ 추가</button>
+            </div>
+          </div>
+
+          <div id="hhCatFields" class="cat-fields"></div>
+
+          <div class="alloc-footer">
+            <span class="alloc-label">가계 배분 합계</span>
+            <strong id="householdAllocated" class="alloc-total">0원</strong>
+            <span class="alloc-gap-label">여유분</span>
+            <strong id="householdBuffer" class="alloc-gap">0원</strong>
+          </div>
+
+          <!-- 메모 -->
+          <label class="memo-label">
             메모
             <textarea id="memo" rows="3" placeholder="이번 달 특이사항"></textarea>
           </label>
 
-          <div class="computed-strip">
-            <div>
-              <span>사업 배분 합계</span>
-              <strong id="businessAllocated">0원</strong>
-            </div>
-            <div>
-              <span>가계 예산 배분</span>
-              <strong id="householdAllocated">0원</strong>
-            </div>
-            <div>
-              <span>조정 여유분</span>
-              <strong id="householdBuffer">0원</strong>
-            </div>
-          </div>
-
           <button class="primary" type="submit">월 데이터 저장</button>
         </form>
 
+        <!-- 예산 기록 테이블 -->
         <section class="table-panel">
           <div class="panel-title">
             <h2>월별 예산 기록</h2>
-            <button id="downloadCsvBtn" type="button" title="월별 예산 CSV 다운로드">예산 CSV</button>
+            <button id="downloadCsvBtn" type="button" class="ghost-btn">예산 CSV</button>
           </div>
           <div class="table-wrap">
             <table>
@@ -144,15 +148,11 @@
                 <tr>
                   <th>월</th>
                   <th>사업수입</th>
-                  <th>세금보관</th>
-                  <th>경비</th>
-                  <th>월급이체</th>
                   <th>가계예산</th>
-                  <th>예산배분</th>
+                  <th>가계배분</th>
                   <th>실제지출</th>
                   <th>예산-실제</th>
-                  <th>대출</th>
-                  <th>저축</th>
+                  <th>여유분</th>
                   <th>관리</th>
                 </tr>
               </thead>
@@ -162,98 +162,109 @@
         </section>
       </section>
 
+      <!-- ══════════════════════════════════════
+           가계부 탭
+      ══════════════════════════════════════ -->
       <section class="tab-panel" data-tab-panel="ledger">
-        <form id="expenseForm" class="entry-panel">
-          <div class="panel-title">
-            <h2>가계부 지출 입력</h2>
-            <button id="resetExpenseBtn" type="button" title="지출 새 입력">새 지출</button>
-          </div>
-
-          <input type="hidden" id="expenseEditingId" />
-
-          <div class="form-grid">
-            <label>
-              날짜
-              <input id="expenseDate" type="date" required />
-            </label>
-            <label>
-              영역
-              <select id="expenseArea">
-                <option value="가계">가계</option>
-                <option value="사업">사업</option>
-              </select>
-            </label>
-            <label>
-              분류
-              <select id="expenseCategory"></select>
-            </label>
-            <label>
-              가격
-              <input id="expenseAmount" type="text" inputmode="numeric" class="money-input" required />
-            </label>
-            <label>
-              내용
-              <input id="expenseDetail" type="text" placeholder="예: 장보기, 학원비, 광고비" required />
-            </label>
-            <label>
-              결제수단
-              <select id="expenseMethod">
-                <option value="계좌이체">계좌이체</option>
-                <option value="현금">현금</option>
-                <option value="체크카드">체크카드</option>
-                <option value="신용카드">신용카드</option>
-                <option value="자동이체">자동이체</option>
-              </select>
-            </label>
-          </div>
-
-          <label>
-            메모
-            <textarea id="expenseMemo" rows="2" placeholder="영수증/특이사항"></textarea>
+        <div class="ledger-month-bar">
+          <label class="month-bar-label">
+            <span>📅 조회 월</span>
+            <input id="ledgerMonthFilter" type="month" />
           </label>
+        </div>
 
-          <button class="primary" type="submit">지출 저장</button>
-        </form>
+        <div class="ledger-layout">
+          <div class="ledger-left">
+            <form id="expenseForm" class="entry-panel">
+              <div class="panel-title">
+                <h2>지출 입력</h2>
+                <button id="resetExpenseBtn" type="button" class="ghost-btn">새 지출</button>
+              </div>
+              <input type="hidden" id="expenseEditingId" />
 
-        <section class="entry-panel category-manager">
-          <div class="panel-title">
-            <h2>분류 관리</h2>
-          </div>
-          <div class="category-editor">
-            <label>
-              새 분류
-              <input id="newCategoryName" type="text" placeholder="예: 경조사, 병원비, 여행" />
-            </label>
-            <button id="addCategoryBtn" type="button">추가</button>
-          </div>
-          <div id="categoryList" class="category-list" aria-label="지출 분류 목록"></div>
-        </section>
+              <div class="form-grid-2">
+                <label>
+                  날짜
+                  <input id="expenseDate" type="date" required />
+                </label>
+                <label>
+                  영역
+                  <select id="expenseArea">
+                    <option value="가계">가계</option>
+                    <option value="사업">사업</option>
+                  </select>
+                </label>
+                <label>
+                  분류
+                  <select id="expenseCategory"></select>
+                </label>
+                <label>
+                  가격
+                  <input id="expenseAmount" type="text" inputmode="numeric" class="money-input" required placeholder="0" />
+                </label>
+                <label class="full-col">
+                  내용
+                  <input id="expenseDetail" type="text" placeholder="예: 장보기, 학원비, 광고비" required />
+                </label>
+                <label>
+                  결제수단
+                  <select id="expenseMethod">
+                    <option value="체크카드">체크카드</option>
+                    <option value="계좌이체">계좌이체</option>
+                    <option value="현금">현금</option>
+                    <option value="신용카드">신용카드</option>
+                    <option value="자동이체">자동이체</option>
+                  </select>
+                </label>
+              </div>
+              <label class="memo-label">
+                메모
+                <textarea id="expenseMemo" rows="2" placeholder="영수증/특이사항"></textarea>
+              </label>
+              <button class="primary" type="submit">지출 저장</button>
+            </form>
 
-        <section class="table-panel">
-          <div class="panel-title">
-            <h2>지출 내역</h2>
-            <button id="downloadExpenseCsvBtn" type="button" title="지출 CSV 다운로드">지출 CSV</button>
+            <section class="entry-panel category-manager">
+              <div class="panel-title">
+                <h2>지출 분류 관리</h2>
+              </div>
+              <div class="category-editor">
+                <input id="newCategoryName" type="text" placeholder="예: 경조사, 병원비, 여행" />
+                <button id="addCategoryBtn" type="button" class="small-btn">+ 추가</button>
+              </div>
+              <div id="categoryList" class="category-list"></div>
+            </section>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>날짜</th>
-                  <th>영역</th>
-                  <th>분류</th>
-                  <th>내용</th>
-                  <th>결제수단</th>
-                  <th>가격</th>
-                  <th>메모</th>
-                  <th>관리</th>
-                </tr>
-              </thead>
-              <tbody id="expensesBody"></tbody>
-            </table>
-          </div>
-        </section>
+
+          <section class="table-panel ledger-table">
+            <div class="panel-title">
+              <h2>지출 내역</h2>
+              <button id="downloadExpenseCsvBtn" type="button" class="ghost-btn">지출 CSV</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>날짜</th>
+                    <th>영역</th>
+                    <th>분류</th>
+                    <th>내용</th>
+                    <th>결제수단</th>
+                    <th>가격</th>
+                    <th>메모</th>
+                    <th>관리</th>
+                  </tr>
+                </thead>
+                <tbody id="expensesBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
       </section>
 
+      <!-- ══════════════════════════════════════
+           분석 탭
+      ══════════════════════════════════════ -->
       <section class="tab-panel" data-tab-panel="analysis">
         <section class="analysis-grid">
           <section class="chart-panel">
@@ -261,13 +272,10 @@
               <h2>추이 보기</h2>
               <select id="chartMetric" aria-label="차트 항목">
                 <option value="householdBudget">가계예산</option>
-                <option value="householdSpend">가계 예산 배분</option>
+                <option value="householdAlloc">가계 배분</option>
                 <option value="actualExpense">실제 지출</option>
-                <option value="buffer">조정 여유분</option>
-                <option value="debtPayment">대출상환</option>
-                <option value="saving">저축/비상금</option>
+                <option value="hhBuffer">조정 여유분</option>
                 <option value="businessIncome">사업수입</option>
-                <option value="taxReserve">세금보관</option>
               </select>
             </div>
             <div class="chart-wrap">
@@ -286,14 +294,17 @@
         </section>
       </section>
 
+      <!-- ══════════════════════════════════════
+           백업 탭
+      ══════════════════════════════════════ -->
       <section class="tab-panel" data-tab-panel="backup">
         <section class="entry-panel backup-panel">
           <h2>백업</h2>
-          <p>입력한 데이터는 현재 브라우저에 저장됩니다. 중요한 데이터는 주기적으로 내보내기 파일로 보관하세요.</p>
+          <p class="backup-desc">입력한 데이터는 현재 브라우저에 저장됩니다. 중요한 데이터는 주기적으로 내보내기 파일로 보관하세요.</p>
           <div class="backup-actions">
-            <button id="exportJsonBtn" type="button" title="전체 데이터 내보내기">내보내기</button>
-            <label class="file-button" title="전체 데이터 가져오기">
-              가져오기
+            <button id="exportJsonBtn" type="button" class="backup-btn">⬇ 내보내기</button>
+            <label class="backup-btn file-button">
+              ⬆ 가져오기
               <input id="importJsonInput" type="file" accept="application/json" />
             </label>
           </div>
