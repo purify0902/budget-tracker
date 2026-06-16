@@ -1,6 +1,9 @@
-const STORAGE_KEY = "solo-business-budget-tracker-v1";
+const STORAGE_KEY = "solo-business-budget-tracker-v2";
+const LEGACY_STORAGE_KEY = "solo-business-budget-tracker-v1";
+const DRAFT_KEY = "solo-business-budget-draft-v1";
+const EXPENSES_KEY = "solo-business-expenses-v1";
 
-const fields = [
+const budgetFields = [
   "month",
   "salaryIncome",
   "businessIncome",
@@ -17,11 +20,22 @@ const fields = [
   "memo",
 ];
 
-const moneyFields = fields.filter((field) => !["month", "memo"].includes(field));
+const expenseFields = [
+  "expenseDate",
+  "expenseArea",
+  "expenseCategory",
+  "expenseDetail",
+  "expenseMethod",
+  "expenseAmount",
+  "expenseMemo",
+];
+
+const moneyFields = budgetFields.filter((field) => !["month", "memo"].includes(field));
 
 const metricLabels = {
   householdBudget: "가계예산",
-  householdSpend: "가계 지출",
+  householdSpend: "가계 예산 배분",
+  actualExpense: "실제 지출",
   buffer: "조정 여유분",
   debtPayment: "대출상환",
   saving: "저축/비상금",
@@ -31,50 +45,89 @@ const metricLabels = {
 
 const $ = (id) => document.getElementById(id);
 
-let records = loadRecords();
+let records = [];
+let expenses = [];
 
-function loadRecords() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    return [
-      {
-        id: crypto.randomUUID(),
-        month: "2026-06",
-        salaryIncome: 2500000,
-        businessIncome: 1000000,
-        householdBudget: 3000000,
-        taxReserve: 250000,
-        businessExpense: 250000,
-        ownerPay: 500000,
-        fixedCost: 800000,
-        livingCost: 750000,
-        educationCost: 650000,
-        medicalCost: 200000,
-        debtPayment: 400000,
-        saving: 200000,
-        memo: "시작 예산",
-      },
-    ];
-  }
-
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
+function uid() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function saveRecords() {
-  records.sort((a, b) => a.month.localeCompare(b.month));
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+function todayString() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
-function formatMoney(value) {
-  return `${Math.round(Number(value) || 0).toLocaleString("ko-KR")}원`;
+function currentMonthString() {
+  return todayString().slice(0, 7);
 }
 
 function toNumber(value) {
   return Number(value) || 0;
+}
+
+function formatMoney(value) {
+  return `${Math.round(toNumber(value)).toLocaleString("ko-KR")}원`;
+}
+
+function shortMoney(value) {
+  const number = toNumber(value);
+  const abs = Math.abs(number);
+  if (abs >= 100000000) return `${(number / 100000000).toFixed(1)}억`;
+  if (abs >= 10000) return `${Math.round(number / 10000).toLocaleString("ko-KR")}만`;
+  return Math.round(number).toLocaleString("ko-KR");
+}
+
+function readJson(key, fallback) {
+  const raw = localStorage.getItem(key);
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+function loadAllData() {
+  const stored = readJson(STORAGE_KEY, null);
+  if (stored && Array.isArray(stored.records)) {
+    records = stored.records;
+    expenses = Array.isArray(stored.expenses) ? stored.expenses : readJson(EXPENSES_KEY, []);
+    return;
+  }
+
+  const legacyRecords = readJson(LEGACY_STORAGE_KEY, null);
+  records = Array.isArray(legacyRecords) ? legacyRecords : seedRecords();
+  expenses = readJson(EXPENSES_KEY, []);
+}
+
+function saveAllData() {
+  records.sort((a, b) => a.month.localeCompare(b.month));
+  expenses.sort((a, b) => b.expenseDate.localeCompare(a.expenseDate));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ records, expenses }));
+  localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
+}
+
+function seedRecords() {
+  return [
+    {
+      id: uid(),
+      month: "2026-06",
+      salaryIncome: 2500000,
+      businessIncome: 1000000,
+      householdBudget: 3000000,
+      taxReserve: 250000,
+      businessExpense: 250000,
+      ownerPay: 500000,
+      fixedCost: 800000,
+      livingCost: 750000,
+      educationCost: 650000,
+      medicalCost: 200000,
+      debtPayment: 400000,
+      saving: 200000,
+      memo: "시작 예산",
+    },
+  ];
 }
 
 function householdSpend(record) {
@@ -96,37 +149,58 @@ function householdBuffer(record) {
   return toNumber(record.householdBudget) - householdSpend(record);
 }
 
-function currentFormRecord() {
+function actualExpenseForMonth(month) {
+  return expenses
+    .filter((expense) => expense.expenseDate?.slice(0, 7) === month)
+    .reduce((sum, expense) => sum + toNumber(expense.expenseAmount), 0);
+}
+
+function currentBudgetFormRecord() {
   const record = {};
-  fields.forEach((field) => {
+  budgetFields.forEach((field) => {
     record[field] = moneyFields.includes(field) ? toNumber($(field).value) : $(field).value.trim();
   });
-  record.id = $("editingId").value || crypto.randomUUID();
+  record.id = $("editingId").value || uid();
   return record;
 }
 
-function setDefaultsFromBusinessIncome() {
-  const businessIncome = toNumber($("businessIncome").value);
-  if (!$("taxReserve").value) $("taxReserve").value = Math.round(businessIncome * 0.25);
-  if (!$("businessExpense").value) $("businessExpense").value = Math.round(businessIncome * 0.25);
-  if (!$("ownerPay").value) $("ownerPay").value = Math.round(businessIncome * 0.5);
+function currentExpenseFormRecord() {
+  const expense = {};
+  expenseFields.forEach((field) => {
+    expense[field] = field === "expenseAmount" ? toNumber($(field).value) : $(field).value.trim();
+  });
+  expense.id = $("expenseEditingId").value || uid();
+  return expense;
 }
 
-function updateComputedStrip() {
-  const record = currentFormRecord();
-  $("businessAllocated").textContent = formatMoney(businessAllocated(record));
-  $("householdAllocated").textContent = formatMoney(householdSpend(record));
-  const buffer = householdBuffer(record);
-  const bufferEl = $("householdBuffer");
-  bufferEl.textContent = formatMoney(buffer);
-  bufferEl.className = buffer < 0 ? "danger" : buffer > 0 ? "positive" : "";
+function saveDraft() {
+  const draft = currentBudgetFormRecord();
+  localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  const status = $("draftStatus");
+  status.textContent = "입력 중인 내용이 임시저장되었습니다.";
 }
 
-function resetForm() {
+function loadDraft() {
+  return readJson(DRAFT_KEY, null);
+}
+
+function clearDraft() {
+  localStorage.removeItem(DRAFT_KEY);
+  $("draftStatus").textContent = "저장 완료. 임시저장을 비웠습니다.";
+}
+
+function fillBudgetForm(record) {
+  budgetFields.forEach((field) => {
+    if ($(field)) $(field).value = record[field] ?? "";
+  });
+  $("editingId").value = record.id || "";
+  updateComputedStrip();
+}
+
+function resetForm({ keepDraft = false } = {}) {
   $("editingId").value = "";
   $("monthForm").reset();
-  const now = new Date();
-  $("month").value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  $("month").value = currentMonthString();
   $("salaryIncome").value = 2500000;
   $("businessIncome").value = 1000000;
   $("householdBudget").value = 3000000;
@@ -139,47 +213,101 @@ function resetForm() {
   $("medicalCost").value = 200000;
   $("debtPayment").value = 400000;
   $("saving").value = 200000;
+  if (!keepDraft) localStorage.removeItem(DRAFT_KEY);
+  $("draftStatus").textContent = "입력 내용은 자동 임시저장됩니다.";
   updateComputedStrip();
+}
+
+function restoreDraftOrDefault() {
+  const draft = loadDraft();
+  if (draft) {
+    fillBudgetForm(draft);
+    $("draftStatus").textContent = "이전에 입력하던 임시저장 내용을 불러왔습니다.";
+  } else {
+    resetForm({ keepDraft: true });
+  }
+}
+
+function resetExpenseForm() {
+  $("expenseEditingId").value = "";
+  $("expenseForm").reset();
+  $("expenseDate").value = todayString();
+  $("expenseArea").value = "가계";
+  $("expenseCategory").value = "생활비";
+  $("expenseMethod").value = "체크카드";
+}
+
+function setDefaultsFromBusinessIncome() {
+  const businessIncome = toNumber($("businessIncome").value);
+  if (!$("taxReserve").value) $("taxReserve").value = Math.round(businessIncome * 0.25);
+  if (!$("businessExpense").value) $("businessExpense").value = Math.round(businessIncome * 0.25);
+  if (!$("ownerPay").value) $("ownerPay").value = Math.round(businessIncome * 0.5);
+}
+
+function updateComputedStrip() {
+  const record = currentBudgetFormRecord();
+  $("businessAllocated").textContent = formatMoney(businessAllocated(record));
+  $("householdAllocated").textContent = formatMoney(householdSpend(record));
+  const buffer = householdBuffer(record);
+  const bufferEl = $("householdBuffer");
+  bufferEl.textContent = formatMoney(buffer);
+  bufferEl.className = buffer < 0 ? "danger" : buffer > 0 ? "positive" : "";
 }
 
 function editRecord(id) {
   const record = records.find((item) => item.id === id);
   if (!record) return;
-  $("editingId").value = id;
-  fields.forEach((field) => {
-    $(field).value = record[field] ?? "";
-  });
-  updateComputedStrip();
+  fillBudgetForm(record);
+  saveDraft();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function deleteRecord(id) {
   records = records.filter((item) => item.id !== id);
-  saveRecords();
   render();
+}
+
+function editExpense(id) {
+  const expense = expenses.find((item) => item.id === id);
+  if (!expense) return;
+  $("expenseEditingId").value = id;
+  expenseFields.forEach((field) => {
+    $(field).value = expense[field] ?? "";
+  });
+  $("expenseForm").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function deleteExpense(id) {
+  expenses = expenses.filter((item) => item.id !== id);
+  render();
+}
+
+function selectedExpenseMonth() {
+  return $("expenseMonthFilter").value || currentMonthString();
 }
 
 function renderSummary() {
   const latest = records.at(-1);
+  const month = selectedExpenseMonth();
   const totalDebt = records.reduce((sum, record) => sum + toNumber(record.debtPayment), 0);
-  const totalSaving = records.reduce((sum, record) => sum + toNumber(record.saving), 0);
   $("latestHousehold").textContent = latest ? formatMoney(latest.householdBudget) : "0원";
   $("latestBuffer").textContent = latest ? formatMoney(householdBuffer(latest)) : "0원";
+  $("selectedExpenseTotal").textContent = formatMoney(actualExpenseForMonth(month));
   $("totalDebt").textContent = formatMoney(totalDebt);
-  $("totalSaving").textContent = formatMoney(totalSaving);
 }
 
-function renderTable() {
+function renderBudgetTable() {
   const body = $("recordsBody");
   if (!records.length) {
-    body.innerHTML = `<tr class="empty-row"><td colspan="11">아직 입력한 월별 기록이 없습니다.</td></tr>`;
+    body.innerHTML = `<tr class="empty-row"><td colspan="12">아직 입력한 월별 기록이 없습니다.</td></tr>`;
     return;
   }
 
   body.innerHTML = records
     .map((record) => {
-      const buffer = householdBuffer(record);
-      const bufferClass = buffer < 0 ? "danger" : buffer > 0 ? "positive" : "";
+      const actual = actualExpenseForMonth(record.month);
+      const actualDiff = toNumber(record.householdBudget) - actual;
+      const diffClass = actualDiff < 0 ? "danger" : actualDiff > 0 ? "positive" : "";
       return `
         <tr>
           <td>${record.month}</td>
@@ -189,7 +317,8 @@ function renderTable() {
           <td>${formatMoney(record.ownerPay)}</td>
           <td>${formatMoney(record.householdBudget)}</td>
           <td>${formatMoney(householdSpend(record))}</td>
-          <td class="${bufferClass}">${formatMoney(buffer)}</td>
+          <td>${formatMoney(actual)}</td>
+          <td class="${diffClass}">${formatMoney(actualDiff)}</td>
           <td>${formatMoney(record.debtPayment)}</td>
           <td>${formatMoney(record.saving)}</td>
           <td>
@@ -202,8 +331,82 @@ function renderTable() {
     .join("");
 }
 
+function renderExpensesTable() {
+  const body = $("expensesBody");
+  const month = selectedExpenseMonth();
+  const filtered = expenses.filter((expense) => expense.expenseDate?.slice(0, 7) === month);
+
+  if (!filtered.length) {
+    body.innerHTML = `<tr class="empty-row"><td colspan="8">선택한 월의 지출 내역이 없습니다.</td></tr>`;
+    return;
+  }
+
+  body.innerHTML = filtered
+    .map(
+      (expense) => `
+        <tr>
+          <td>${expense.expenseDate}</td>
+          <td>${expense.expenseArea}</td>
+          <td>${expense.expenseCategory}</td>
+          <td class="text-left">${escapeHtml(expense.expenseDetail)}</td>
+          <td>${expense.expenseMethod}</td>
+          <td>${formatMoney(expense.expenseAmount)}</td>
+          <td class="text-left">${escapeHtml(expense.expenseMemo || "")}</td>
+          <td>
+            <button class="text-button" type="button" data-expense-edit="${expense.id}">수정</button>
+            <button class="text-button" type="button" data-expense-delete="${expense.id}">삭제</button>
+          </td>
+        </tr>
+      `,
+    )
+    .join("");
+}
+
+function renderCategorySummary() {
+  const wrap = $("categorySummary");
+  const month = selectedExpenseMonth();
+  const filtered = expenses.filter((expense) => expense.expenseDate?.slice(0, 7) === month);
+  const total = filtered.reduce((sum, expense) => sum + toNumber(expense.expenseAmount), 0);
+
+  const byCategory = filtered.reduce((map, expense) => {
+    const key = `${expense.expenseArea} · ${expense.expenseCategory}`;
+    map[key] = (map[key] || 0) + toNumber(expense.expenseAmount);
+    return map;
+  }, {});
+
+  const rows = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
+
+  if (!rows.length) {
+    wrap.innerHTML = `<p class="empty-note">선택한 월에 입력된 지출이 없습니다.</p>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+    <div class="summary-total">
+      <span>${month} 실제 지출 합계</span>
+      <strong>${formatMoney(total)}</strong>
+    </div>
+    ${rows
+      .map(([label, value]) => {
+        const percent = total ? Math.round((value / total) * 100) : 0;
+        return `
+          <div class="category-row">
+            <div class="category-row-top">
+              <span>${label}</span>
+              <strong>${formatMoney(value)}</strong>
+            </div>
+            <div class="bar"><i style="width: ${percent}%"></i></div>
+            <small>${percent}%</small>
+          </div>
+        `;
+      })
+      .join("")}
+  `;
+}
+
 function metricValue(record, metric) {
   if (metric === "householdSpend") return householdSpend(record);
+  if (metric === "actualExpense") return actualExpenseForMonth(record.month);
   if (metric === "buffer") return householdBuffer(record);
   return toNumber(record[metric]);
 }
@@ -282,18 +485,21 @@ function renderChart() {
   $("chartLegend").textContent = `${metricLabels[metric]} 최근값: ${formatMoney(metricValue(latest, metric))}`;
 }
 
-function shortMoney(value) {
-  const abs = Math.abs(value);
-  if (abs >= 100000000) return `${(value / 100000000).toFixed(1)}억`;
-  if (abs >= 10000) return `${Math.round(value / 10000).toLocaleString("ko-KR")}만`;
-  return Math.round(value).toLocaleString("ko-KR");
+function render() {
+  saveAllData();
+  renderSummary();
+  renderBudgetTable();
+  renderExpensesTable();
+  renderCategorySummary();
+  renderChart();
 }
 
-function render() {
-  saveRecords();
-  renderSummary();
-  renderTable();
-  renderChart();
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
 
 function download(filename, content, mimeType) {
@@ -307,10 +513,20 @@ function download(filename, content, mimeType) {
 }
 
 function exportJson() {
-  download("budget-tracker-data.json", JSON.stringify(records, null, 2), "application/json");
+  download(
+    "budget-tracker-data.json",
+    JSON.stringify({ records, expenses, exportedAt: new Date().toISOString() }, null, 2),
+    "application/json",
+  );
 }
 
-function exportCsv() {
+function makeCsv(headers, rows) {
+  return [headers, ...rows]
+    .map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(","))
+    .join("\n");
+}
+
+function exportBudgetCsv() {
   const headers = [
     "월",
     "근로소득",
@@ -319,8 +535,9 @@ function exportCsv() {
     "경비",
     "월급이체",
     "가계예산",
-    "가계지출",
-    "조정여유분",
+    "예산배분",
+    "실제지출",
+    "예산-실제",
     "대출상환",
     "저축비상금",
     "메모",
@@ -334,15 +551,27 @@ function exportCsv() {
     record.ownerPay,
     record.householdBudget,
     householdSpend(record),
-    householdBuffer(record),
+    actualExpenseForMonth(record.month),
+    toNumber(record.householdBudget) - actualExpenseForMonth(record.month),
     record.debtPayment,
     record.saving,
     record.memo || "",
   ]);
-  const csv = [headers, ...rows]
-    .map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(","))
-    .join("\n");
-  download("budget-tracker-records.csv", `\ufeff${csv}`, "text/csv;charset=utf-8");
+  download("budget-tracker-budget-records.csv", `\ufeff${makeCsv(headers, rows)}`, "text/csv;charset=utf-8");
+}
+
+function exportExpenseCsv() {
+  const headers = ["날짜", "영역", "분류", "내용", "결제수단", "가격", "메모"];
+  const rows = expenses.map((expense) => [
+    expense.expenseDate,
+    expense.expenseArea,
+    expense.expenseCategory,
+    expense.expenseDetail,
+    expense.expenseMethod,
+    expense.expenseAmount,
+    expense.expenseMemo || "",
+  ]);
+  download("budget-tracker-expenses.csv", `\ufeff${makeCsv(headers, rows)}`, "text/csv;charset=utf-8");
 }
 
 function importJson(file) {
@@ -351,9 +580,19 @@ function importJson(file) {
   reader.onload = () => {
     try {
       const imported = JSON.parse(String(reader.result));
-      if (!Array.isArray(imported)) throw new Error("Invalid data");
-      records = imported.map((record) => ({ ...record, id: record.id || crypto.randomUUID() }));
+      if (Array.isArray(imported)) {
+        records = imported.map((record) => ({ ...record, id: record.id || uid() }));
+        expenses = [];
+      } else {
+        records = Array.isArray(imported.records)
+          ? imported.records.map((record) => ({ ...record, id: record.id || uid() }))
+          : [];
+        expenses = Array.isArray(imported.expenses)
+          ? imported.expenses.map((expense) => ({ ...expense, id: expense.id || uid() }))
+          : [];
+      }
       render();
+      alert("데이터를 가져왔습니다.");
     } catch {
       alert("가져오기 파일을 확인해주세요.");
     }
@@ -362,19 +601,23 @@ function importJson(file) {
 }
 
 function bindEvents() {
-  $("monthForm").addEventListener("input", updateComputedStrip);
+  $("monthForm").addEventListener("input", () => {
+    updateComputedStrip();
+    saveDraft();
+  });
 
   $("businessIncome").addEventListener("change", () => {
     $("taxReserve").value = Math.round(toNumber($("businessIncome").value) * 0.25);
     $("businessExpense").value = Math.round(toNumber($("businessIncome").value) * 0.25);
     $("ownerPay").value = Math.round(toNumber($("businessIncome").value) * 0.5);
     updateComputedStrip();
+    saveDraft();
   });
 
   $("monthForm").addEventListener("submit", (event) => {
     event.preventDefault();
     setDefaultsFromBusinessIncome();
-    const next = currentFormRecord();
+    const next = currentBudgetFormRecord();
     const existingIndex = records.findIndex((record) => record.id === next.id || record.month === next.month);
     if (existingIndex >= 0) {
       next.id = records[existingIndex].id;
@@ -382,8 +625,23 @@ function bindEvents() {
     } else {
       records.push(next);
     }
+    clearDraft();
     render();
     resetForm();
+  });
+
+  $("expenseForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const next = currentExpenseFormRecord();
+    const existingIndex = expenses.findIndex((expense) => expense.id === next.id);
+    if (existingIndex >= 0) {
+      expenses[existingIndex] = next;
+    } else {
+      expenses.push(next);
+    }
+    $("expenseMonthFilter").value = next.expenseDate.slice(0, 7);
+    render();
+    resetExpenseForm();
   });
 
   $("recordsBody").addEventListener("click", (event) => {
@@ -393,13 +651,26 @@ function bindEvents() {
     if (deleteId) deleteRecord(deleteId);
   });
 
-  $("resetFormBtn").addEventListener("click", resetForm);
+  $("expensesBody").addEventListener("click", (event) => {
+    const editId = event.target.dataset.expenseEdit;
+    const deleteId = event.target.dataset.expenseDelete;
+    if (editId) editExpense(editId);
+    if (deleteId) deleteExpense(deleteId);
+  });
+
+  $("resetFormBtn").addEventListener("click", () => resetForm());
+  $("resetExpenseBtn").addEventListener("click", resetExpenseForm);
   $("chartMetric").addEventListener("change", renderChart);
+  $("expenseMonthFilter").addEventListener("change", render);
   $("exportJsonBtn").addEventListener("click", exportJson);
-  $("downloadCsvBtn").addEventListener("click", exportCsv);
+  $("downloadCsvBtn").addEventListener("click", exportBudgetCsv);
+  $("downloadExpenseCsvBtn").addEventListener("click", exportExpenseCsv);
   $("importJsonInput").addEventListener("change", (event) => importJson(event.target.files[0]));
 }
 
+loadAllData();
 bindEvents();
-resetForm();
+$("expenseMonthFilter").value = records.at(-1)?.month || currentMonthString();
+restoreDraftOrDefault();
+resetExpenseForm();
 render();
