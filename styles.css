@@ -54,6 +54,8 @@
 ═══════════════════════════════════════════════ */
 *, *::before, *::after { box-sizing: border-box; }
 
+html, body { overflow-x: hidden; }
+
 body {
   margin: 0;
   background: var(--bg);
@@ -902,8 +904,19 @@ th:first-child, td:first-child { text-align: left; }
   .app-header { padding: 16px var(--gutter) 12px; }
   .entry-panel, .chart-panel, .table-panel { padding: 16px; }
 
-  .table-wrap { font-size: 12px; }
-  th, td { padding: 9px 10px; }
+  /* 가계부 테이블 - 모바일에서 컬럼 정리 */
+  table { min-width: unset; font-size: 12px; }
+  th, td { padding: 8px 8px; }
+
+  /* 결제수단·메모 컬럼 숨기기 */
+  #expensesBody tr td:nth-child(5),
+  #expensesBody tr td:nth-child(7),
+  .ledger-table thead th:nth-child(5),
+  .ledger-table thead th:nth-child(7) { display: none; }
+
+  /* 예산 테이블 - 여유분·관리만 표시 */
+  #recordsBody tr td:nth-child(4),
+  .table-panel:not(.ledger-table) thead th:nth-child(4) { font-size: 11px; }
 }
 
 @media (max-width: 400px) {
