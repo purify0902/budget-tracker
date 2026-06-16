@@ -896,9 +896,17 @@ function bindEvents() {
   $("bizEditBtn").addEventListener("click", toggleBizEdit);
   $("hhEditBtn").addEventListener("click",  toggleHhEdit);
 
-  // Live pct badge update while editing
-  $("bizCatEditor").addEventListener("input", () => { flushBizEdits(); updateBizPctBadge(); });
-  $("hhCatEditor").addEventListener("input",  () => { flushHhEdits();  updateHhPctBadge(); });
+  // Live pct badge update + auto-recalculate amounts while editing
+  $("bizCatEditor").addEventListener("input", e => {
+    flushBizEdits();
+    updateBizPctBadge();
+    if (e.target.classList.contains("cat-edit-pct") && toNum($("businessIncome").value) > 0) distributeBiz();
+  });
+  $("hhCatEditor").addEventListener("input", e => {
+    flushHhEdits();
+    updateHhPctBadge();
+    if (e.target.classList.contains("cat-edit-pct") && toNum($("householdBudget").value) > 0) distributeHh();
+  });
 
   // Delete cat row buttons
   $("bizCatEditor").addEventListener("click", e => {
