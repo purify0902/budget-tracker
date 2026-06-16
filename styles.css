@@ -10,6 +10,9 @@
   --danger: #b42318;
   --ok: #047857;
   --soft: #eef2f7;
+  --editable: #fff8db;
+  --editable-border: #e8cf72;
+  --readonly: #f1f3f6;
 }
 
 * {
@@ -78,7 +81,7 @@ h1 {
 }
 
 h2 {
-  font-size: 18px;
+  font-size: 17px;
 }
 
 .header-actions,
@@ -178,11 +181,15 @@ input,
 select,
 textarea {
   width: 100%;
-  border: 1px solid var(--line);
+  border: 1px solid var(--editable-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--editable);
   color: var(--text);
   padding: 10px 11px;
+}
+
+input[type="file"] {
+  background: transparent;
 }
 
 textarea {
@@ -215,7 +222,7 @@ textarea:focus {
 .computed-strip div {
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--soft);
+  background: var(--readonly);
   padding: 12px;
 }
 
@@ -238,7 +245,7 @@ textarea:focus {
   margin-top: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--readonly);
   overflow: hidden;
 }
 
@@ -265,7 +272,7 @@ textarea:focus {
 .category-row {
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--readonly);
   padding: 12px;
 }
 
@@ -321,7 +328,7 @@ table {
   width: 100%;
   min-width: 980px;
   border-collapse: collapse;
-  background: #fff;
+  background: var(--readonly);
 }
 
 th,
